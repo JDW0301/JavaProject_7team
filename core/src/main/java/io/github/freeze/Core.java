@@ -1,27 +1,28 @@
 package io.github.freeze;
 
 import com.badlogic.gdx.Game;
-import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
+import io.github.freeze.screens.FirstScreen;
+
 public class Core extends Game {
-    private SpriteBatch batch;
-    private AssetManager assets;
+    public static final int V_WIDTH  = 1280;  // ★ 4:3 가상 해상도
+    public static final int V_HEIGHT = 960;
 
-    @Override
-    public void create() {
+    public SpriteBatch batch;
+
+    @Override public void create() {
         batch = new SpriteBatch();
-        assets = new AssetManager();
-        setScreen(new FirstScreen(this));   // ← FirstScreen이 로딩+메뉴를 모두 담당
+        setScreen(new FirstScreen(this));
     }
 
-    @Override
-    public void dispose() {
-        if (getScreen() != null) getScreen().dispose();
+    @Override public void dispose() {
         if (batch != null) batch.dispose();
-        if (assets != null) assets.dispose();
+        super.dispose();
     }
-
-    public SpriteBatch getBatch() { return batch; }
-    public AssetManager getAssets() { return assets; }
+    @Override
+    public void render() {
+        super.render();   // 현재 setScreen(...)된 Screen들의 render()만 돌림
+        // 여기서 batch.begin()/draw() 같은 추가 그리기 절대 금지
+    }
 }
