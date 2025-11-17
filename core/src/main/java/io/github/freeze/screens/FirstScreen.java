@@ -1,7 +1,6 @@
 package io.github.freeze.screens;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.*;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -69,28 +68,7 @@ public class FirstScreen implements Screen {
         btnJoin   = imageButton(texJoin);
         btnOption = imageButton(texOption);
         btnExit   = imageButton(texExit);
-        /*
 
-        btnCreate.addListener(e -> !btnCreate.isPressed() ? false : (Gdx.app.log("UI","방 만들기"), true));
-        btnJoin.addListener(e -> !btnJoin.isPressed() ? false : (Gdx.app.log("UI","방 들어가기"), true));
-        btnOption.addListener(e -> !btnOption.isPressed() ? false : (Gdx.app.log("UI","설정"), true));
-        btnExit.addListener(e -> { if (btnExit.isPressed()) Gdx.app.exit(); return true; });
-        */
-//        btnCreate.addListener(new ClickListener() {
-//            @Override public void clicked(InputEvent event, float x, float y) {
-//                Gdx.app.log("UI", "방 만들기");
-//                // app.setScreen(new CreateRoomScreen(app));
-//            }
-//        });
-//
-//        // 방 들어가기
-//        btnJoin.addListener(new ClickListener() {
-//            @Override public void clicked(InputEvent event, float x, float y) {
-//                final Screen prev = app.getScreen();        // 현재(FirstScreen) 보관
-//                app.setScreen(new JoinRoomScreen(app));     // 새 화면으로 전환
-//                if (prev != null) prev.dispose();           // 되돌아올 일 없으면 해제
-//            }
-//        });
         btnCreate.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) {
                 Gdx.app.log("UI","방 만들기 클릭");
@@ -118,6 +96,22 @@ public class FirstScreen implements Screen {
                 Gdx.app.exit();
             }
         });
+        // 플레이 방 들어가는 임시 코드--------------------------------------------------------
+        // FirstScreen.java 내부(생성자 끝부분 즈음)
+        InputMultiplexer mux = new InputMultiplexer();
+        mux.addProcessor(stage);
+        mux.addProcessor(new InputAdapter() {
+            @Override public boolean keyDown(int keycode) {
+                if (keycode == Input.Keys.F5) { // F5 누르면 맵 화면
+                    app.setScreen(new GameScreen(app));
+                    return true;
+                }
+                return false;
+            }
+        });
+        Gdx.input.setInputProcessor(mux);
+        //--------------------------------------------------------------------------------
+
 
         menuTable = new Table();
         menuTable.defaults().pad(buttonSpacing).center();

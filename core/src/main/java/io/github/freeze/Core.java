@@ -1,8 +1,10 @@
 package io.github.freeze;
 
 import com.badlogic.gdx.Game;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
+import io.github.freeze.net.Net;
 import io.github.freeze.screens.FirstScreen;
 
 public class Core extends Game {
@@ -12,8 +14,16 @@ public class Core extends Game {
     public SpriteBatch batch;
 
     @Override public void create() {
+//        batch = new SpriteBatch();
+//        setScreen(new FirstScreen(this));
         batch = new SpriteBatch();
+        try {
+            Net.get().connect("ws://203:234:62:47:8080/ws");
+        } catch (Exception e) {
+            Gdx.app.error("NET", "connect failed", e);
+        }
         setScreen(new FirstScreen(this));
+
     }
 
     @Override public void dispose() {

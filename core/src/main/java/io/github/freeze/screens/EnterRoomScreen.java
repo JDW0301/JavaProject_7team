@@ -56,11 +56,6 @@ public class EnterRoomScreen implements Screen {
         texDim        = makePixel(new Color(0,0,0,1));
         texWhite      = makePixel(new Color(1,1,1,1));
 
-        // background
-//        bg = new Image(new TextureRegionDrawable(new TextureRegion(texBg)));
-//        bg.setFillParent(true);
-//        stage.addActor(bg);
-
         dim = new Image(new TextureRegionDrawable(new TextureRegion(texDim)));
         dim.setFillParent(true);
         dim.setColor(0,0,0,0.50f);
@@ -106,7 +101,7 @@ public class EnterRoomScreen implements Screen {
         tfPassword = new TextField("", tfs);   tfPassword.setMessageText("비밀번호(선택)");
         tfPassword.setPasswordMode(true);      tfPassword.setPasswordCharacter('*');
 
-        // frame + textfield (Stack + Container padding)
+
         inputCode = makeInputStack(tfCode);
         inputPw   = makeInputStack(tfPassword);
         stage.addActor(inputCode);
@@ -115,6 +110,7 @@ public class EnterRoomScreen implements Screen {
         stage.setKeyboardFocus(tfCode);
 
         layoutActors();
+
     }
 
     // ---------- layout ----------
@@ -209,7 +205,6 @@ public class EnterRoomScreen implements Screen {
         box.pad(padY, padX, padY, padX);  // top, left, bottom, right
         box.invalidate();
     }
-    //private Container<?> padTop(float v){ Container<?> c=new Container<>(); c.padTop(v); return c; } // dummy to chain? (libGDX allows box.padTop)
 
     private BitmapFont makeKoreanFont(int px){
         FileHandle fh = Gdx.files.internal("fonts/NotoSansKR-Regular.ttf");
@@ -229,7 +224,16 @@ public class EnterRoomScreen implements Screen {
     }
 
     // ---------- Screen ----------
-    @Override public void show() {}
+    @Override public void show() {
+//        Net.get().setListener(new Net.Listener() {
+//            @Override public void onJoinOk(String roomId) {
+//                app.setScreen(new LobbyScreen(app, roomId));   // 대기실로 이동
+//            }
+//            @Override public void onServerError(String code, String message) {
+//                statusLabel.setText("오류: " + code + " / " + message); // 화면의 라벨에 표시
+//            }
+//        });
+    }
 
     @Override
     public void render(float delta) {
@@ -251,7 +255,9 @@ public class EnterRoomScreen implements Screen {
 
     @Override public void pause() {}
     @Override public void resume() {}
-    @Override public void hide() {}
+    @Override public void hide() {
+        //Net.get().setListener(null);
+    }
 
     @Override
     public void dispose() {

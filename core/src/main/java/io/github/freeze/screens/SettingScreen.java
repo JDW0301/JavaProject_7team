@@ -52,11 +52,6 @@ public class SettingScreen implements Screen {
         texCancelUp  = load("images/cancel.png");
         texCancelOver= load("images/cancel_O.png");
 
-        // === 배경/보드 ===
-        //bg = new Image(new TextureRegionDrawable(new TextureRegion(texBg)));
-        //bg.setFillParent(true);
-        //stage.addActor(bg);
-
         board = new Image(new TextureRegionDrawable(new TextureRegion(texBoard)));
         stage.addActor(board);
 

@@ -22,6 +22,7 @@ import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 
 import com.badlogic.gdx.graphics.GL20;
 import io.github.freeze.Core;
+import io.github.freeze.net.Net;
 
 public class CreateRoomScreen implements Screen {
 
@@ -66,12 +67,6 @@ public class CreateRoomScreen implements Screen {
         texDim        = makePixel(new Color(0,0,0,1f));
         texWhite      = makePixel(new Color(1,1,1,1f));
 
-        // ---- Background ----
-//        bg = new Image(new TextureRegionDrawable(new TextureRegion(texBg)));
-//        bg.setFillParent(true);
-//        stage.addActor(bg);
-//        bg.setPosition(0, 0);
-
         dim = new Image(new TextureRegionDrawable(new TextureRegion(texDim)));
         dim.setFillParent(true);
         dim.setColor(0,0,0,0.50f);
@@ -91,14 +86,44 @@ public class CreateRoomScreen implements Screen {
                 app.setScreen(new FirstScreen(app)); // 뒤로
             }
         });
+//        btnCheck.addListener(new ClickListener() {
+//            @Override public void clicked(InputEvent event, float x, float y) {
+//                Gdx.app.log("JOIN", "확인 클릭: title=" + tfTitle.getText()
+//                    + ", code=" + tfCode.getText()
+//                    + ", pw=" + tfPassword.getText());
+//                // TODO: 검증 및 다음 단계
+//            }
+//        });
         btnCheck.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent event, float x, float y) {
-                Gdx.app.log("JOIN", "확인 클릭: title=" + tfTitle.getText()
-                    + ", code=" + tfCode.getText()
-                    + ", pw=" + tfPassword.getText());
-                // TODO: 검증 및 다음 단계
+            @Override public void clicked(InputEvent e, float x, float y) {
+                String title = tfTitle.getText().trim();
+                String code  = tfCode.getText().trim();
+                String pass  = tfPassword.getText();
+                String nick  = ""; // 닉네임 소스
+
+                // 결과 초기화
+                Net.get().resetLastResult();
+
+                // 필요 시 즉시 연결 시도(앱 시작 시 연결 실패했던 경우 대비)
+                if (!Net.get().isOpen()) {
+                    try { Net.get().connect("ws://203:234:62:47:8080/ws"); }
+                    catch (Exception ex) { Gdx.app.error("NET", "connect fail", ex); }
+                }
+
+                // 전송 실패해도 앱이 죽지 않도록 보호
+                try {
+                    Net.get().sendCreateRoom(title, code, pass, nick);
+                } catch (Throwable t) {
+                    Gdx.app.error("NET", "createRoom send failed", t);
+                }
+
+                // 요구 흐름: 즉시 메인으로 복귀
+                final Screen prev = app.getScreen();
+                app.setScreen(new FirstScreen(app));
+                if (prev != null) prev.dispose();
             }
         });
+
 
         stage.addActor(btnCancel);
         stage.addActor(btnCheck);
@@ -318,8 +343,6 @@ public class CreateRoomScreen implements Screen {
             Gdx.graphics.getBackBufferHeight(),
             true
         );
-        // 선택: 레이아웃 재계산 함수가 있다면 호출
-        // layoutActors();
     }
 
     @Override public void pause() {}
@@ -333,12 +356,5 @@ public class CreateRoomScreen implements Screen {
         texCancelUp.dispose(); texCancelOver.dispose();
         texCheckUp.dispose();  texCheckOver.dispose();
         texDim.dispose(); texWhite.dispose();
-
-        // ★ TTF로 만든 폰트 객체 정리 (이름에 맞춰 수정)
-        //if (fontInput != null) fontInput.dispose();
-
-        // Skin을 안 쓰면 아래 둘은 지워도 됩니다.
-        // if (skin != null) skin.dispose();
-        // if (font != null) font.dispose();
     }
 }
