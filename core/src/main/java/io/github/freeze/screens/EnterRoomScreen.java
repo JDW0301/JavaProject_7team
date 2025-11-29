@@ -24,6 +24,10 @@ public class EnterRoomScreen implements Screen {
     
     // ★ 내 닉네임 저장
     private String myNickname;
+    
+    // ★ 플레이어 위치 + Ready 상태 저장용
+    private java.util.Map<String, float[]> playerPositions = new java.util.HashMap<>();
+    private java.util.Map<String, Boolean> readyStatus = new java.util.HashMap<>();
 
     // textures
     private Texture texBg, texBoard, texInput;
@@ -279,8 +283,9 @@ public class EnterRoomScreen implements Screen {
     // ---------- Screen ----------
     @Override 
     public void show() {
-        // ★ 플레이어 목록 + 위치 저장용
-        java.util.Map<String, float[]> playerPositions = new java.util.HashMap<>();
+        // ★ 플레이어 목록 + 위치 초기화
+        playerPositions.clear();
+        readyStatus.clear();
         
         // ★ 네트워크 리스너 설정
         Net.get().setListener(new Net.Listener() {
@@ -292,10 +297,17 @@ public class EnterRoomScreen implements Screen {
             }
             
             @Override
+            public void onPlayerReady(String playerId, boolean isReady) {
+                // ★ Ready 상태 저장
+                readyStatus.put(playerId, isReady);
+                Gdx.app.log("ENTER", "Ready 상태: " + playerId + " = " + isReady);
+            }
+            
+            @Override
             public void onJoinOk(String roomId) {
-                Gdx.app.log("ENTER", "방 입장 완료! roomId=" + roomId + ", players=" + playerPositions.keySet() + ", myNick=" + myNickname);
-                // ★ LobbyScreen으로 이동 (플레이어 위치 + 내 닉네임 전달)
-                app.setScreen(new LobbyScreen(app, roomId, playerPositions, myNickname));
+                Gdx.app.log("ENTER", "방 입장 완료! roomId=" + roomId + ", players=" + playerPositions.keySet() + ", ready=" + readyStatus + ", myNick=" + myNickname);
+                // ★ LobbyScreen으로 이동 (플레이어 위치 + Ready 상태 + 내 닉네임 전달)
+                app.setScreen(new LobbyScreen(app, roomId, playerPositions, readyStatus, myNickname));
             }
 
             @Override

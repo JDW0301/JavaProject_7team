@@ -79,12 +79,17 @@ public class LobbyScreen implements Screen {
     
     // ★ 초기 플레이어 위치
     private Map<String, float[]> initialPositions;
+    
+    // ★ 초기 Ready 상태
+    private Map<String, Boolean> initialReadyStatus;
 
-    // ★★★ 수정: 4개 파라미터 생성자 ★★★
-    public LobbyScreen(Core app, String roomId, Map<String, float[]> playerPositions, String myNickname) {
+    // ★★★ 수정: 5개 파라미터 생성자 (readyStatus 추가) ★★★
+    public LobbyScreen(Core app, String roomId, Map<String, float[]> playerPositions, 
+                       Map<String, Boolean> readyStatusMap, String myNickname) {
         this.app = app;
         this.roomId = roomId;
         this.initialPositions = playerPositions;
+        this.initialReadyStatus = readyStatusMap;  // ★ 초기 Ready 상태 저장
         this.myPlayerId = myNickname;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
@@ -101,7 +106,7 @@ public class LobbyScreen implements Screen {
     
     // ★ 기존 2개 파라미터 생성자 (테스트용)
     public LobbyScreen(Core app, String roomId) {
-        this(app, roomId, new HashMap<>(), "TestPlayer");
+        this(app, roomId, new HashMap<>(), new HashMap<>(), "TestPlayer");
         // 테스트용 로컬 플레이어
         createTestPlayer();
     }
@@ -349,9 +354,15 @@ public class LobbyScreen implements Screen {
         player.setIdleTexture(texIdle);
 
         players.put(playerId, player);
-        readyStatus.put(playerId, false);  // ★ Ready 초기화
         
-        Gdx.app.log("LOBBY", "Player added: " + playerId + " at (" + posX + ", " + posY + ") (total: " + players.size() + ")");
+        // ★ 초기 Ready 상태 적용 (서버에서 받은 값 또는 false)
+        boolean initialReady = false;
+        if (initialReadyStatus != null && initialReadyStatus.containsKey(playerId)) {
+            initialReady = initialReadyStatus.get(playerId);
+        }
+        readyStatus.put(playerId, initialReady);
+        
+        Gdx.app.log("LOBBY", "Player added: " + playerId + " at (" + posX + ", " + posY + ") Ready=" + initialReady + " (total: " + players.size() + ")");
     }
     
     // ★★★ 추가: 서버에서 받은 플레이어들 생성 ★★★
@@ -555,6 +566,11 @@ public class LobbyScreen implements Screen {
         stage.getViewport().apply(true);
 
         handleInput(delta);
+
+        // ★ 모든 플레이어 업데이트 (애니메이션 재생)
+        for (Player p : players.values()) {
+            p.update(delta);
+        }
 
         stage.act(delta);
         stage.draw();
