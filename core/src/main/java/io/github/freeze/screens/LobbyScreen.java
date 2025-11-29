@@ -76,10 +76,19 @@ public class LobbyScreen implements Screen {
     // 이동 전송 타이머
     private float moveSendTimer = 0f;
     private static final float MOVE_SEND_INTERVAL = 0.05f;  // 50ms마다 전송
+    
+    // ★ 초기 플레이어 목록
+    private java.util.List<String> initialPlayers;
 
     public LobbyScreen(Core app, String roomId) {
+        this(app, roomId, null);
+    }
+    
+    // ★ 플레이어 목록을 받는 생성자
+    public LobbyScreen(Core app, String roomId, java.util.List<String> players) {
         this.app = app;
         this.roomId = roomId;
+        this.initialPlayers = players;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
         stage.getViewport().update(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight(), true);
@@ -89,8 +98,38 @@ public class LobbyScreen implements Screen {
         setupUI();
         setupNetworkListener();
 
-        // 테스트용: 로컬 플레이어 생성
-        createTestPlayer();
+        // ★ 서버에서 받은 플레이어들 생성
+        if (initialPlayers != null && !initialPlayers.isEmpty()) {
+            // ★ myPlayerId 설정 (Preferences에서 닉네임 가져오기)
+            Preferences pref = Gdx.app.getPreferences("settings");
+            String nick = pref.getString("nickname", "");
+            if (nick.isEmpty()) {
+                nick = "Player" + (int)(Math.random() * 10000);
+            }
+            myPlayerId = nick;
+            
+            // ★ 첫 번째 플레이어가 방장 (방 생성자)
+            isHost = initialPlayers.get(0).equals(myPlayerId);
+            
+            for (String playerId : initialPlayers) {
+                addPlayer(playerId);
+            }
+            
+            // ★ 내 플레이어를 앞으로
+            Player me = this.players.get(myPlayerId);
+            if (me != null && me.getImage() != null) {
+                me.getImage().toFront();
+            }
+            
+            // ★ Start 버튼 가시성
+            btnStart.setVisible(isHost);
+            
+            updatePlayerCount();
+            Gdx.app.log("LOBBY", "초기 플레이어 생성 완료: " + initialPlayers + ", 내 ID: " + myPlayerId + ", 방장: " + isHost);
+        } else {
+            // 테스트용: 로컬 플레이어 생성
+            createTestPlayer();
+        }
     }
 
     // ========== 텍스처 로딩 ==========
@@ -341,8 +380,14 @@ public class LobbyScreen implements Screen {
         if (dx != 0f || dy != 0f) {
             movePlayer(me, dx, dy, delta);
             
-            // ★ 로비에서는 서버에 이동 안 보냄! (NOT_PLAYING 에러 방지)
-            // GameScreen에서만 move 전송함
+            // ★ 서버에 이동 전송 (이동 동기화)
+            moveSendTimer += delta;
+            if (moveSendTimer >= MOVE_SEND_INTERVAL) {
+                float px = me.getImage().getX();
+                float py = me.getImage().getY();
+                Net.get().sendPlayerMove(myPlayerId, dx, dy, px, py);
+                moveSendTimer = 0f;
+            }
         } else {
             me.stopMoving();
             moveSendTimer = 0f;

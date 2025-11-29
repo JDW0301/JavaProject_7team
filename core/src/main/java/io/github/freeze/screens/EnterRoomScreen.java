@@ -270,13 +270,25 @@ public class EnterRoomScreen implements Screen {
     // ---------- Screen ----------
     @Override 
     public void show() {
+        // ★ 플레이어 목록 저장용
+        java.util.List<String> joinedPlayers = new java.util.ArrayList<>();
+        
         // ★ 네트워크 리스너 설정
         Net.get().setListener(new Net.Listener() {
             @Override
+            public void onPlayerJoined(String playerId) {
+                // ★ 플레이어 목록에 추가
+                if (!joinedPlayers.contains(playerId)) {
+                    joinedPlayers.add(playerId);
+                    Gdx.app.log("ENTER", "플레이어 추가: " + playerId);
+                }
+            }
+            
+            @Override
             public void onJoinOk(String roomId) {
-                Gdx.app.log("ENTER", "방 입장 완료! roomId=" + roomId);
-                // LobbyScreen으로 이동
-                app.setScreen(new LobbyScreen(app, roomId));
+                Gdx.app.log("ENTER", "방 입장 완료! roomId=" + roomId + ", players=" + joinedPlayers);
+                // ★ LobbyScreen으로 이동 (플레이어 목록 전달)
+                app.setScreen(new LobbyScreen(app, roomId, joinedPlayers));
             }
 
             @Override

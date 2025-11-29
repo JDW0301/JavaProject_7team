@@ -122,7 +122,7 @@ public class CreateRoomScreen implements Screen {
                 // 방 생성 요청
                 try {
                     Gdx.app.log("CREATE", "방 생성: code=" + code + ", title=" + title + ", nick=" + nick);
-                    Net.get().sendCreateRoom(code, title, pass);
+                    Net.get().sendCreateRoom(code, title, pass, nick);  // ★ nick 추가
                 } catch (Throwable t) {
                     Gdx.app.error("NET", "createRoom send failed", t);
                 }
@@ -307,13 +307,25 @@ public class CreateRoomScreen implements Screen {
 
     @Override 
     public void show() {
+        // ★ 플레이어 목록 저장용
+        java.util.List<String> joinedPlayers = new java.util.ArrayList<>();
+        
         // ★ 네트워크 리스너 설정
         Net.get().setListener(new Net.Listener() {
             @Override
+            public void onPlayerJoined(String playerId) {
+                // ★ 플레이어 목록에 추가
+                if (!joinedPlayers.contains(playerId)) {
+                    joinedPlayers.add(playerId);
+                    Gdx.app.log("CREATE", "플레이어 추가: " + playerId);
+                }
+            }
+            
+            @Override
             public void onCreateRoomOk(String roomId) {
-                Gdx.app.log("CREATE", "방 생성 완료! roomId=" + roomId);
-                // LobbyScreen으로 이동
-                app.setScreen(new LobbyScreen(app, roomId));
+                Gdx.app.log("CREATE", "방 생성 완료! roomId=" + roomId + ", players=" + joinedPlayers);
+                // ★ LobbyScreen으로 이동 (플레이어 목록 전달)
+                app.setScreen(new LobbyScreen(app, roomId, joinedPlayers));
             }
 
             @Override

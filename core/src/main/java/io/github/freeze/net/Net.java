@@ -112,16 +112,17 @@ public final class Net {
 
     // ====== API (서버 문서 포맷에 맞춤) ======
     
-    // 방 생성
-    public void sendCreateRoom(String code, String title, String password) {
+    // 방 생성 (★ playerId 추가 - 생성자 자동 입장)
+    public void sendCreateRoom(String code, String title, String password, String playerId) {
         Map<String,Object> payload = new HashMap<>();
         payload.put("code", code);
         payload.put("title", title);
         payload.put("password", password);
+        payload.put("playerId", playerId);  // ★ 생성자 ID
 
         Map<String,Object> msg = new HashMap<>();
-        msg.put("type", "createRoom");  // ★ "op" → "type"
-        msg.put("payload", payload);     // ★ "data" → "payload"
+        msg.put("type", "createRoom");
+        msg.put("payload", payload);
         sendJson(msg);
     }
 
