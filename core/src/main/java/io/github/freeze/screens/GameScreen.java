@@ -355,6 +355,7 @@ public class GameScreen implements Screen {
                 Player target = players.get(targetId);
                 if (target != null) {
                     target.startFreeze();
+                    Gdx.app.log("GAME", "서버: " + targetId + " 빙결됨 (by " + attackerId + ")");
                 }
             }
 
@@ -363,6 +364,7 @@ public class GameScreen implements Screen {
                 Player target = players.get(targetId);
                 if (target != null) {
                     target.startUnfreeze();
+                    Gdx.app.log("GAME", "서버: " + targetId + " 해빙됨 (by " + unfreezeId + ")");
                 }
             }
 
@@ -374,18 +376,25 @@ public class GameScreen implements Screen {
                 switch (skillType) {
                     case "dash":
                         p.useDashSkill();
+                        Gdx.app.log("GAME", playerId + " 대시 스킬!");
                         break;
                     case "fog":
                         p.useFogSkill();
+                        // ★ Chaser 화면에 안개 표시
+                        if (myPlayer != null && myPlayer.getRole() == PlayerRole.CHASER) {
+                            fogEffect.activate();
+                            Gdx.app.log("GAME", playerId + " 안개 스킬! Chaser 화면에 안개!");
+                        }
                         break;
                 }
             }
 
             @Override
             public void onFogActivated(String playerId) {
-                // Chaser 화면에만 안개 표시
+                // ★ Chaser 화면에만 안개 표시 (서버가 별도로 보내는 경우)
                 if (myPlayer != null && myPlayer.getRole() == PlayerRole.CHASER) {
                     fogEffect.activate();
+                    Gdx.app.log("GAME", "안개 활성화!");
                 }
             }
         });
@@ -476,7 +485,9 @@ public class GameScreen implements Screen {
 
             players.put(runnerId, testRunner);
             
-            Gdx.app.log("TEST", "로컬 테스트 모드 ON - Chaser(WASD/Q), Runner(화살표)");
+            Gdx.app.log("TEST", "=== 로컬 테스트 모드 ===");
+            Gdx.app.log("TEST", "Chaser: WASD 이동, Q 공격");
+            Gdx.app.log("TEST", "Runner: 화살표 이동, 1 안개, 2 대시, 3 해동");
         }
 
         chaserImage.toFront();
@@ -621,7 +632,17 @@ public class GameScreen implements Screen {
 
     // ========== 입력 처리 ==========
     private void handleInput(float delta) {
-        if (myPlayer == null || !myPlayer.canMove()) return;
+        if (myPlayer == null) return;
+        
+        // ★ 스킬 입력은 항상 처리 (canMove 상관없이)
+        if (myPlayer.getRole() == PlayerRole.RUNNER) {
+            handleRunnerSkills();
+        } else if (myPlayer.getRole() == PlayerRole.CHASER) {
+            handleChaserSkills();
+        }
+        
+        // 이동은 canMove일 때만
+        if (!myPlayer.canMove()) return;
 
         float dx = 0f, dy = 0f;
         if (Gdx.input.isKeyPressed(Input.Keys.A)) dx -= 1f;
@@ -645,55 +666,61 @@ public class GameScreen implements Screen {
             // 이동 안 할 때 velocity 초기화 (애니메이션 멈춤)
             myPlayer.stopMoving();
         }
-
-        // 스킬 입력
-        if (myPlayer.getRole() == PlayerRole.RUNNER) {
-            handleRunnerSkills();
-        } else if (myPlayer.getRole() == PlayerRole.CHASER) {
-            handleChaserSkills();
-        }
         
-        // ★ 테스트 모드: 화살표 키로 testRunner 조작
-        if (localTestMode && testRunner != null && testRunner.canMove()) {
+        // ★ 테스트 모드: testRunner 조작
+        if (localTestMode && testRunner != null) {
             handleTestRunnerInput(delta);
         }
     }
     
     // ★ 테스트용 Runner 조작 (화살표 키)
     private void handleTestRunnerInput(float delta) {
-        float dx = 0f, dy = 0f;
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) dx -= 1f;
-        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dx += 1f;
-        if (Gdx.input.isKeyPressed(Input.Keys.UP)) dy += 1f;
-        if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) dy -= 1f;
+        // 이동은 canMove일 때만
+        if (testRunner.canMove()) {
+            float dx = 0f, dy = 0f;
+            if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) dx -= 1f;
+            if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dx += 1f;
+            if (Gdx.input.isKeyPressed(Input.Keys.UP)) dy += 1f;
+            if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) dy -= 1f;
 
-        if (dx != 0f || dy != 0f) {
-            movePlayerWithCollision(testRunner, dx, dy, delta);
-        } else {
-            testRunner.stopMoving();
+            if (dx != 0f || dy != 0f) {
+                movePlayerWithCollision(testRunner, dx, dy, delta);
+            } else {
+                testRunner.stopMoving();
+            }
         }
         
-        // NUMPAD 1: 안개 스킬
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_1)) {
+        // ★ 스킬은 항상 처리 (얼린 상태에서도 해동 가능)
+        
+        // NUMPAD 1 또는 1: 안개 스킬
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_1) || Gdx.input.isKeyJustPressed(Input.Keys.NUM_1)) {
             testRunner.useFogSkill();
             if (testRunner.getFogSkill().isActive()) {
                 // Chaser 화면에 안개 표시
                 fogEffect.activate();
-                Gdx.app.log("TEST", "Runner 안개 스킬!");
+                Gdx.app.log("TEST", "★ Runner 안개 스킬! Chaser 화면에 안개!");
+            } else {
+                Gdx.app.log("TEST", "안개 쿨타임 중...");
             }
         }
         
-        // NUMPAD 2: 대시 스킬
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_2)) {
+        // NUMPAD 2 또는 2: 대시 스킬
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_2) || Gdx.input.isKeyJustPressed(Input.Keys.NUM_2)) {
             testRunner.useDashSkill();
-            Gdx.app.log("TEST", "Runner 대시 스킬!");
+            if (testRunner.getDashSkill().isActive()) {
+                Gdx.app.log("TEST", "★ Runner 대시 스킬!");
+            } else {
+                Gdx.app.log("TEST", "대시 쿨타임 중...");
+            }
         }
         
-        // NUMPAD 3: 해동 (자기 자신)
-        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_3)) {
-            if (testRunner.isFrozen()) {
+        // NUMPAD 3 또는 3: 해동 (자기 자신)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_3) || Gdx.input.isKeyJustPressed(Input.Keys.NUM_3)) {
+            if (testRunner.isFrozen() || testRunner.getState() == PlayerState.FREEZING) {
                 testRunner.startUnfreeze();
-                Gdx.app.log("TEST", "Runner 해동!");
+                Gdx.app.log("TEST", "★ Runner 해동!");
+            } else {
+                Gdx.app.log("TEST", "얼지 않은 상태");
             }
         }
     }
@@ -703,7 +730,15 @@ public class GameScreen implements Screen {
         if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
             myPlayer.useFogSkill();
             if (myPlayer.getFogSkill().isActive()) {
-                Net.get().sendSkillUse("fog");
+                // ★ 서버 모드일 때 서버로 전송
+                if (!localTestMode) {
+                    Net.get().sendSkillUse("fog");
+                } else {
+                    // ★ 테스트 모드: Chaser 화면에 안개 표시 (Chaser가 myPlayer이므로)
+                    // 실제로는 다른 플레이어(Chaser)에게 전달되어야 함
+                    // 테스트 모드에서는 myPlayer가 Chaser이므로 이 코드는 실행 안 됨
+                }
+                Gdx.app.log("GAME", "Runner 안개 스킬 사용!");
             }
         }
 
@@ -711,7 +746,11 @@ public class GameScreen implements Screen {
         if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
             myPlayer.useDashSkill();
             if (myPlayer.getDashSkill().isActive()) {
-                Net.get().sendSkillUse("dash");
+                // ★ 서버 모드일 때 서버로 전송
+                if (!localTestMode) {
+                    Net.get().sendSkillUse("dash");
+                }
+                Gdx.app.log("GAME", "Runner 대시 스킬 사용!");
             }
         }
 
@@ -721,11 +760,13 @@ public class GameScreen implements Screen {
             Player frozenTarget = findNearestFrozenPlayer();
             if (frozenTarget != null && myPlayer.getState() != PlayerState.UNFREEZING_TARGET) {
                 myPlayer.startUnfreezeTarget(frozenTarget);
+                Gdx.app.log("GAME", "Runner " + frozenTarget.getPlayerId() + " 해빙 시도 중...");
             }
         } else {
             // F키를 떼면 해빙 취소
             if (myPlayer.getState() == PlayerState.UNFREEZING_TARGET) {
                 myPlayer.cancelUnfreeze();
+                Gdx.app.log("GAME", "Runner 해빙 취소");
             }
         }
     }
@@ -736,7 +777,7 @@ public class GameScreen implements Screen {
             // 공격 시작/유지
             if (!myPlayer.isAttacking()) {
                 myPlayer.startAttack();
-                Gdx.app.log("TEST", "Chaser Q 공격 시작!");
+                Gdx.app.log("GAME", "Chaser Q 공격 시작!");
             }
 
             // 범위 내 Runner 빙결 시작/유지
@@ -747,10 +788,12 @@ public class GameScreen implements Screen {
                     if (dist <= FREEZE_RANGE) {
                         // 범위 안 → 빙결 시작/유지
                         if (!p.isFrozen() && p.getState() != PlayerState.FREEZING) {
-                            if (localTestMode) {
-                                p.startFreeze();
-                                Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 빙결 시작!");
-                            } else {
+                            // ★ 테스트/서버 모드 모두 빙결 시작
+                            p.startFreeze();
+                            Gdx.app.log("GAME", "★ " + p.getPlayerId() + " 빙결 시작!");
+                            
+                            // ★ 서버 모드일 때 서버에도 전송
+                            if (!localTestMode) {
                                 Net.get().sendFreeze(p.getPlayerId());
                             }
                         }
@@ -761,13 +804,18 @@ public class GameScreen implements Screen {
             // Q 뗌 → 공격 멈춤
             if (myPlayer.isAttacking()) {
                 myPlayer.cancelAttack();
-                Gdx.app.log("TEST", "Chaser Q 공격 멈춤!");
+                Gdx.app.log("GAME", "Chaser Q 공격 멈춤!");
                 
-                // 빙결 중인 Runner들 해빙 시작
+                // ★ 빙결 중인 Runner들 해빙 시작 (테스트/서버 모드 모두)
                 for (Player p : players.values()) {
                     if (p.getRole() == PlayerRole.RUNNER && p.getState() == PlayerState.FREEZING) {
                         p.startUnfreeze();
-                        Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 해빙 시작!");
+                        Gdx.app.log("GAME", "★ " + p.getPlayerId() + " 해빙 시작!");
+                        
+                        // ★ 서버 모드일 때 서버에도 전송
+                        if (!localTestMode) {
+                            Net.get().sendUnfreeze(p.getPlayerId());
+                        }
                     }
                 }
             }
@@ -800,7 +848,8 @@ public class GameScreen implements Screen {
             dy /= len;
         }
 
-        float speed = player.getSpeed();
+        // ★ 맵 크기 1.5배 보정
+        float speed = player.getSpeed() * 1.5f;
         float vx = dx * speed * delta;
         float vy = dy * speed * delta;
 

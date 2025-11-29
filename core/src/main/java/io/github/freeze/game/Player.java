@@ -356,7 +356,9 @@ public class Player {
         // FROZEN이거나 FREEZING 상태에서 해빙 가능
         if (state != PlayerState.FROZEN && state != PlayerState.FREEZING) return;
         state = PlayerState.UNFREEZING;
-        freezeAnimTimer = 0f;
+        
+        // ★ 현재 프레임에서 역순 시작 (F3까지 얼었으면 F3→F2→F1)
+        freezeAnimTimer = (4 - freezeMotionFrame) * UNFREEZE_FRAME_DURATION;
     }
 
     // === Chaser 공격 ===

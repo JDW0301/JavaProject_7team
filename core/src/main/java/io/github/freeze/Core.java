@@ -17,8 +17,8 @@ public class Core extends Game {
     public void create() {
         batch = new SpriteBatch();
         try {
-            // ★ 콜론(:)을 점(.)으로 수정!
-            Net.get().connect("ws://203.234.62.47:8080/ws");
+            // ★ 서버 주소 (포트 9090)
+            Net.get().connect("ws://203.234.62.48:9090/ws");
             Gdx.app.log("CORE", "Connecting to server...");
         } catch (Exception e) {
             Gdx.app.error("NET", "connect failed", e);

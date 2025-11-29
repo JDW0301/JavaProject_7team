@@ -98,7 +98,7 @@ public class EnterRoomScreen implements Screen {
                 // 필요 시 즉시 연결 시도
                 if (!Net.get().isOpen()) {
                     try { 
-                        Net.get().connect("ws://203.234.62.47:8080/ws"); 
+                        Net.get().connect("ws://203.234.62.48:9090/ws"); 
                     } catch (Exception ex) { 
                         Gdx.app.error("NET", "connect fail", ex); 
                         return;
