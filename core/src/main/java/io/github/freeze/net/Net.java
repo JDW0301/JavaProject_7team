@@ -29,6 +29,8 @@ public final class Net {
         default void onSkillUsed(String playerId, String skillType) {}
         default void onFogActivated(String playerId) {}
         default void onPlayerReady(String playerId, boolean isReady) {}  // ★ Ready 추가
+        default void onPlayerJoined(String playerId) {}  // ★ 플레이어 입장
+        default void onPlayerLeft(String playerId) {}    // ★ 플레이어 퇴장
     }
 
     private static final Net I = new Net();
@@ -260,10 +262,24 @@ public final class Net {
                 }
                 
                 case "playerJoined": {
-                    // snapshot에서 roomId 추출
                     String roomId = jo.has("roomId") ? jo.get("roomId").getAsString() : "";
-                    Gdx.app.log("WS", "Joined room: " + roomId);
-                    if (listener != null) listener.onJoinOk(roomId);
+                    
+                    // ★ snapshot에서 새로 입장한 플레이어 정보 추출
+                    if (jo.has("snapshot")) {
+                        JsonObject snapshot = jo.getAsJsonObject("snapshot");
+                        
+                        // players 배열이 있으면 파싱
+                        if (snapshot.has("players")) {
+                            JsonArray playersArray = snapshot.getAsJsonArray("players");
+                            for (int i = 0; i < playersArray.size(); i++) {
+                                String playerId = playersArray.get(i).getAsString();
+                                // 각 플레이어에 대해 onPlayerJoined 호출
+                                if (listener != null) listener.onPlayerJoined(playerId);
+                            }
+                        }
+                    }
+                    
+                    Gdx.app.log("WS", "Player joined room: " + roomId);
                     break;
                 }
                 
@@ -288,7 +304,9 @@ public final class Net {
                 }
                 
                 case "playerLeft": {
-                    Gdx.app.log("WS", "Player left");
+                    String playerId = jo.has("playerId") ? jo.get("playerId").getAsString() : "";
+                    Gdx.app.log("WS", "Player left: " + playerId);
+                    if (listener != null) listener.onPlayerLeft(playerId);
                     break;
                 }
                 
@@ -329,8 +347,15 @@ public final class Net {
                 }
                 
                 case "error": {
-                    String code = jo.has("code") ? jo.get("code").getAsString() : "UNKNOWN";
-                    String message = jo.has("message") ? jo.get("message").getAsString() : "";
+                    // ★ payload 안에서 code와 message 찾기
+                    String code = "UNKNOWN";
+                    String message = "";
+                    
+                    if (jo.has("payload")) {
+                        JsonObject payload = jo.getAsJsonObject("payload");
+                        code = payload.has("code") ? payload.get("code").getAsString() : "UNKNOWN";
+                        message = payload.has("message") ? payload.get("message").getAsString() : "";
+                    }
                     
                     lastRoomId = null;
                     lastErrCode = code;

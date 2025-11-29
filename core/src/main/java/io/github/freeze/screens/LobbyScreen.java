@@ -217,7 +217,32 @@ public class LobbyScreen implements Screen {
                 updatePlayerCount();
             }
 
-            // TODO: onPlayerJoined, onPlayerLeft 추가 가능
+            @Override
+            public void onPlayerJoined(String playerId) {
+                Gdx.app.log("LOBBY", "Player joined: " + playerId);
+                
+                // ★ 이미 있는 플레이어면 무시
+                if (players.containsKey(playerId)) {
+                    return;
+                }
+                
+                // ★ 새 플레이어 생성
+                addPlayer(playerId);
+                updatePlayerCount();
+            }
+
+            @Override
+            public void onPlayerLeft(String playerId) {
+                Gdx.app.log("LOBBY", "Player left: " + playerId);
+                
+                // ★ 플레이어 제거
+                Player p = players.remove(playerId);
+                if (p != null && p.getImage() != null) {
+                    p.getImage().remove();  // 화면에서 제거
+                }
+                readyStatus.remove(playerId);
+                updatePlayerCount();
+            }
         });
     }
 
@@ -233,21 +258,35 @@ public class LobbyScreen implements Screen {
         myPlayerId = nick;  // 닉네임을 playerId로 사용
         isHost = true;  // 테스트용으로 방장
 
+        addPlayer(myPlayerId);
+
+        // UI 업데이트
+        btnStart.setVisible(isHost);
+        updatePlayerCount();
+    }
+
+    // ★ 플레이어 추가 (자신 or 다른 플레이어)
+    private void addPlayer(String playerId) {
+        // 이미 있으면 무시
+        if (players.containsKey(playerId)) {
+            return;
+        }
+
         // 캐릭터 이미지
         Image playerImage = new Image(new TextureRegionDrawable(new TextureRegion(texIdle)));
         float charH = VH * 0.225f;  // GameScreen과 동일
         float charScale = charH / texIdle.getHeight();
         playerImage.setSize(texIdle.getWidth() * charScale, texIdle.getHeight() * charScale);
 
-        // 바닥 중앙에 배치
-        playerImage.setPosition(
-            floorArea.x + floorArea.width / 2 - playerImage.getWidth() / 2,
-            floorArea.y + floorArea.height / 2 - playerImage.getHeight() / 2
-        );
+        // ★ 랜덤 위치에 배치 (겹치지 않게)
+        float randomX = floorArea.x + (float)(Math.random() * (floorArea.width - playerImage.getWidth()));
+        float randomY = floorArea.y + (float)(Math.random() * (floorArea.height - playerImage.getHeight()));
+        
+        playerImage.setPosition(randomX, randomY);
         world.addActor(playerImage);
 
         // Player 객체 생성 (Runner로 설정)
-        Player player = new Player(myPlayerId, PlayerRole.RUNNER, playerImage);
+        Player player = new Player(playerId, PlayerRole.RUNNER, playerImage);
         player.setPosition(playerImage.getX(), playerImage.getY());
 
         // 애니메이션 설정
@@ -262,12 +301,10 @@ public class LobbyScreen implements Screen {
         player.setWalkAnimations(walkLeft, walkRight);
         player.setIdleTexture(texIdle);
 
-        players.put(myPlayerId, player);
-        readyStatus.put(myPlayerId, false);  // ★ Ready 초기화
-
-        // UI 업데이트
-        btnStart.setVisible(isHost);
-        updatePlayerCount();
+        players.put(playerId, player);
+        readyStatus.put(playerId, false);  // ★ Ready 초기화
+        
+        Gdx.app.log("LOBBY", "Player added: " + playerId + " (total: " + players.size() + ")");
     }
 
     // ========== 입력 처리 ==========
