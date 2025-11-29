@@ -638,7 +638,7 @@ public class GameScreen implements Screen {
     public void addOtherPlayer(String playerId, PlayerRole role) {
         if (players.containsKey(playerId)) return;
 
-        Player player = createPlayerWithRole(playerId, role);
+        Player player = createPlayerWithRole(playerId, role, null);  // ★ 위치 없으면 null
         players.put(playerId, player);
         Gdx.app.log("GAME", "플레이어 추가: " + playerId + " (" + role + ")");
     }
