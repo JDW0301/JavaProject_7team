@@ -307,25 +307,23 @@ public class CreateRoomScreen implements Screen {
 
     @Override 
     public void show() {
-        // ★ 플레이어 목록 저장용
-        java.util.List<String> joinedPlayers = new java.util.ArrayList<>();
+        // ★ 플레이어 목록 + 위치 저장용
+        java.util.Map<String, float[]> playerPositions = new java.util.HashMap<>();
         
         // ★ 네트워크 리스너 설정
         Net.get().setListener(new Net.Listener() {
             @Override
-            public void onPlayerJoined(String playerId) {
-                // ★ 플레이어 목록에 추가
-                if (!joinedPlayers.contains(playerId)) {
-                    joinedPlayers.add(playerId);
-                    Gdx.app.log("CREATE", "플레이어 추가: " + playerId);
-                }
+            public void onPlayerJoined(String playerId, float x, float y) {
+                // ★ 플레이어 위치 저장
+                playerPositions.put(playerId, new float[]{x, y});
+                Gdx.app.log("CREATE", "플레이어 추가: " + playerId + " at (" + x + ", " + y + ")");
             }
             
             @Override
             public void onCreateRoomOk(String roomId) {
-                Gdx.app.log("CREATE", "방 생성 완료! roomId=" + roomId + ", players=" + joinedPlayers);
-                // ★ LobbyScreen으로 이동 (플레이어 목록 전달)
-                app.setScreen(new LobbyScreen(app, roomId, joinedPlayers));
+                Gdx.app.log("CREATE", "방 생성 완료! roomId=" + roomId + ", players=" + playerPositions.keySet());
+                // ★ LobbyScreen으로 이동 (플레이어 위치 전달)
+                app.setScreen(new LobbyScreen(app, roomId, playerPositions));
             }
 
             @Override

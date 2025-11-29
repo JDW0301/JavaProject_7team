@@ -77,18 +77,18 @@ public class LobbyScreen implements Screen {
     private float moveSendTimer = 0f;
     private static final float MOVE_SEND_INTERVAL = 0.05f;  // 50ms마다 전송
     
-    // ★ 초기 플레이어 목록
-    private java.util.List<String> initialPlayers;
+    // ★ 초기 플레이어 위치 정보
+    private java.util.Map<String, float[]> initialPlayerPositions;
 
     public LobbyScreen(Core app, String roomId) {
-        this(app, roomId, null);
+        this(app, roomId, (java.util.Map<String, float[]>) null);
     }
     
-    // ★ 플레이어 목록을 받는 생성자
-    public LobbyScreen(Core app, String roomId, java.util.List<String> players) {
+    // ★ 플레이어 위치를 받는 생성자
+    public LobbyScreen(Core app, String roomId, java.util.Map<String, float[]> playerPositions) {
         this.app = app;
         this.roomId = roomId;
-        this.initialPlayers = players;
+        this.initialPlayerPositions = playerPositions;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
         stage.getViewport().update(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight(), true);
@@ -98,8 +98,8 @@ public class LobbyScreen implements Screen {
         setupUI();
         setupNetworkListener();
 
-        // ★ 서버에서 받은 플레이어들 생성
-        if (initialPlayers != null && !initialPlayers.isEmpty()) {
+        // ★ 서버에서 받은 플레이어들 생성 (위치 포함)
+        if (initialPlayerPositions != null && !initialPlayerPositions.isEmpty()) {
             // ★ myPlayerId 설정 (Preferences에서 닉네임 가져오기)
             Preferences pref = Gdx.app.getPreferences("settings");
             String nick = pref.getString("nickname", "");
@@ -109,10 +109,13 @@ public class LobbyScreen implements Screen {
             myPlayerId = nick;
             
             // ★ 첫 번째 플레이어가 방장 (방 생성자)
-            isHost = initialPlayers.get(0).equals(myPlayerId);
+            String firstPlayer = initialPlayerPositions.keySet().iterator().next();
+            isHost = firstPlayer.equals(myPlayerId);
             
-            for (String playerId : initialPlayers) {
-                addPlayer(playerId);
+            for (java.util.Map.Entry<String, float[]> entry : initialPlayerPositions.entrySet()) {
+                String playerId = entry.getKey();
+                float[] pos = entry.getValue();
+                addPlayer(playerId, pos[0], pos[1]);  // ★ 위치 전달
             }
             
             // ★ 내 플레이어를 앞으로
@@ -125,7 +128,7 @@ public class LobbyScreen implements Screen {
             btnStart.setVisible(isHost);
             
             updatePlayerCount();
-            Gdx.app.log("LOBBY", "초기 플레이어 생성 완료: " + initialPlayers + ", 내 ID: " + myPlayerId + ", 방장: " + isHost);
+            Gdx.app.log("LOBBY", "초기 플레이어 생성 완료: " + initialPlayerPositions.keySet() + ", 내 ID: " + myPlayerId + ", 방장: " + isHost);
         } else {
             // 테스트용: 로컬 플레이어 생성
             createTestPlayer();
@@ -241,12 +244,14 @@ public class LobbyScreen implements Screen {
             public void onGameStart(String roleJson) {
                 Gdx.app.log("LOBBY", "게임 시작! roleJson=" + roleJson);
                 
-                // ★ roleJson 파싱해서 역할 정보 추출
+                // ★ roleJson 파싱해서 역할 + 위치 정보 추출
                 Map<String, PlayerRole> roles = new HashMap<>();
+                Map<String, float[]> positions = new HashMap<>();
                 
                 try {
                     com.google.gson.JsonObject jo = com.google.gson.JsonParser.parseString(roleJson).getAsJsonObject();
                     
+                    // 역할 파싱
                     if (jo.has("roles")) {
                         com.google.gson.JsonObject rolesObj = jo.getAsJsonObject("roles");
                         for (String playerId : rolesObj.keySet()) {
@@ -256,12 +261,24 @@ public class LobbyScreen implements Screen {
                             Gdx.app.log("LOBBY", "역할 배정: " + playerId + " → " + role);
                         }
                     }
+                    
+                    // ★ 위치 파싱
+                    if (jo.has("positions")) {
+                        com.google.gson.JsonObject posObj = jo.getAsJsonObject("positions");
+                        for (String playerId : posObj.keySet()) {
+                            com.google.gson.JsonObject pos = posObj.getAsJsonObject(playerId);
+                            float x = pos.has("x") ? pos.get("x").getAsFloat() : 0f;
+                            float y = pos.has("y") ? pos.get("y").getAsFloat() : 0f;
+                            positions.put(playerId, new float[]{x, y});
+                            Gdx.app.log("LOBBY", "위치: " + playerId + " → (" + x + ", " + y + ")");
+                        }
+                    }
                 } catch (Exception e) {
-                    Gdx.app.error("LOBBY", "역할 파싱 실패: " + e.getMessage());
+                    Gdx.app.error("LOBBY", "파싱 실패: " + e.getMessage());
                 }
                 
-                // ★ GameScreen으로 이동 (역할 정보 전달)
-                app.setScreen(new GameScreen(app, roles));
+                // ★ GameScreen으로 이동 (역할 + 위치 전달)
+                app.setScreen(new GameScreen(app, roles, positions));
             }
 
             @Override
@@ -277,16 +294,16 @@ public class LobbyScreen implements Screen {
             }
 
             @Override
-            public void onPlayerJoined(String playerId) {
-                Gdx.app.log("LOBBY", "Player joined: " + playerId);
+            public void onPlayerJoined(String playerId, float x, float y) {
+                Gdx.app.log("LOBBY", "Player joined: " + playerId + " at (" + x + ", " + y + ")");
                 
                 // ★ 이미 있는 플레이어면 무시
                 if (players.containsKey(playerId)) {
                     return;
                 }
                 
-                // ★ 새 플레이어 생성
-                addPlayer(playerId);
+                // ★ 새 플레이어 생성 (위치 포함)
+                addPlayer(playerId, x, y);
                 updatePlayerCount();
             }
 
@@ -324,8 +341,13 @@ public class LobbyScreen implements Screen {
         updatePlayerCount();
     }
 
-    // ★ 플레이어 추가 (자신 or 다른 플레이어)
+    // ★ 플레이어 추가 (랜덤 위치)
     private void addPlayer(String playerId) {
+        addPlayer(playerId, -1, -1);  // -1이면 랜덤 위치
+    }
+    
+    // ★ 플레이어 추가 (지정된 위치)
+    private void addPlayer(String playerId, float x, float y) {
         // 이미 있으면 무시
         if (players.containsKey(playerId)) {
             return;
@@ -337,11 +359,19 @@ public class LobbyScreen implements Screen {
         float charScale = charH / texIdle.getHeight();
         playerImage.setSize(texIdle.getWidth() * charScale, texIdle.getHeight() * charScale);
 
-        // ★ 랜덤 위치에 배치 (겹치지 않게)
-        float randomX = floorArea.x + (float)(Math.random() * (floorArea.width - playerImage.getWidth()));
-        float randomY = floorArea.y + (float)(Math.random() * (floorArea.height - playerImage.getHeight()));
+        // ★ 위치 설정 (서버에서 받은 위치 or 랜덤)
+        float posX, posY;
+        if (x <= 0 && y <= 0) {
+            // 랜덤 위치
+            posX = floorArea.x + (float)(Math.random() * (floorArea.width - playerImage.getWidth()));
+            posY = floorArea.y + (float)(Math.random() * (floorArea.height - playerImage.getHeight()));
+        } else {
+            // 서버에서 받은 위치
+            posX = x;
+            posY = y;
+        }
         
-        playerImage.setPosition(randomX, randomY);
+        playerImage.setPosition(posX, posY);
         world.addActor(playerImage);
 
         // Player 객체 생성 (Runner로 설정)
@@ -363,7 +393,7 @@ public class LobbyScreen implements Screen {
         players.put(playerId, player);
         readyStatus.put(playerId, false);  // ★ Ready 초기화
         
-        Gdx.app.log("LOBBY", "Player added: " + playerId + " (total: " + players.size() + ")");
+        Gdx.app.log("LOBBY", "Player added: " + playerId + " at (" + posX + ", " + posY + ") (total: " + players.size() + ")");
     }
 
     // ========== 입력 처리 ==========

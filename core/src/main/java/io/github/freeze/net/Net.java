@@ -28,9 +28,9 @@ public final class Net {
         default void onPlayerUnfreeze(String targetId, String unfreezeId) {}
         default void onSkillUsed(String playerId, String skillType) {}
         default void onFogActivated(String playerId) {}
-        default void onPlayerReady(String playerId, boolean isReady) {}  // ★ Ready 추가
-        default void onPlayerJoined(String playerId) {}  // ★ 플레이어 입장
-        default void onPlayerLeft(String playerId) {}    // ★ 플레이어 퇴장
+        default void onPlayerReady(String playerId, boolean isReady) {}
+        default void onPlayerJoined(String playerId, float x, float y) {}  // ★ 위치 포함!
+        default void onPlayerLeft(String playerId) {}
     }
 
     private static final Net I = new Net();
@@ -267,7 +267,7 @@ public final class Net {
                 case "playerJoined": {
                     String roomId = jo.has("roomId") ? jo.get("roomId").getAsString() : "";
                     
-                    // ★ snapshot에서 플레이어 정보 추출
+                    // ★ snapshot에서 플레이어 정보 추출 (위치 포함!)
                     if (jo.has("snapshot")) {
                         JsonObject snapshot = jo.getAsJsonObject("snapshot");
                         
@@ -275,9 +275,25 @@ public final class Net {
                         if (snapshot.has("players")) {
                             JsonArray playersArray = snapshot.getAsJsonArray("players");
                             for (int i = 0; i < playersArray.size(); i++) {
-                                String playerId = playersArray.get(i).getAsString();
-                                // 각 플레이어에 대해 onPlayerJoined 호출
-                                if (listener != null) listener.onPlayerJoined(playerId);
+                                JsonElement elem = playersArray.get(i);
+                                
+                                // ★ 객체 형태 (id, x, y 포함)
+                                if (elem.isJsonObject()) {
+                                    JsonObject playerObj = elem.getAsJsonObject();
+                                    String playerId = playerObj.has("id") ? playerObj.get("id").getAsString() : "";
+                                    float x = playerObj.has("x") ? playerObj.get("x").getAsFloat() : 0f;
+                                    float y = playerObj.has("y") ? playerObj.get("y").getAsFloat() : 0f;
+                                    
+                                    if (listener != null && !playerId.isEmpty()) {
+                                        listener.onPlayerJoined(playerId, x, y);
+                                    }
+                                    Gdx.app.log("WS", "Player: " + playerId + " at (" + x + ", " + y + ")");
+                                } 
+                                // ★ 문자열 형태 (하위 호환)
+                                else if (elem.isJsonPrimitive()) {
+                                    String playerId = elem.getAsString();
+                                    if (listener != null) listener.onPlayerJoined(playerId, 0f, 0f);
+                                }
                             }
                         }
                     }

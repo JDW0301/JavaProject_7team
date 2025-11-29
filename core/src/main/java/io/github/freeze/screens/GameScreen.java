@@ -113,13 +113,19 @@ public class GameScreen implements Screen {
 
     // ★ 서버에서 받은 역할 정보
     private Map<String, PlayerRole> serverRoles = new HashMap<>();
+    private Map<String, float[]> serverPositions = new HashMap<>();  // ★ 위치 정보
 
     public GameScreen(Core app) {
-        this(app, null);  // 테스트 모드
+        this(app, null, null);  // 테스트 모드
     }
 
-    // ★ 서버 연동용 생성자
+    // ★ 서버 연동용 생성자 (역할만)
     public GameScreen(Core app, Map<String, PlayerRole> roles) {
+        this(app, roles, null);
+    }
+    
+    // ★ 서버 연동용 생성자 (역할 + 위치)
+    public GameScreen(Core app, Map<String, PlayerRole> roles, Map<String, float[]> positions) {
         this.app = app;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
@@ -131,10 +137,13 @@ public class GameScreen implements Screen {
         setupNetworkListener();
 
         if (roles != null && !roles.isEmpty()) {
-            // ★ 서버 모드: 역할 정보로 플레이어 생성
+            // ★ 서버 모드: 역할 + 위치 정보로 플레이어 생성
             localTestMode = false;
             serverRoles = roles;
-            createPlayersFromServer(roles);
+            if (positions != null) {
+                serverPositions = positions;
+            }
+            createPlayersFromServer(roles, serverPositions);
         } else {
             // ★ 테스트 모드: 로컬 플레이어 생성
             localTestMode = true;
@@ -494,8 +503,8 @@ public class GameScreen implements Screen {
         centerCameraOnPlayer(myPlayer);
     }
 
-    // ========== 서버 모드: 역할 정보로 플레이어 생성 ==========
-    private void createPlayersFromServer(Map<String, PlayerRole> roles) {
+    // ========== 서버 모드: 역할 + 위치 정보로 플레이어 생성 ==========
+    private void createPlayersFromServer(Map<String, PlayerRole> roles, Map<String, float[]> positions) {
         // ★ Preferences에서 내 닉네임 가져오기
         Preferences pref = Gdx.app.getPreferences("settings");
         String myNick = pref.getString("nickname", "");
@@ -509,8 +518,11 @@ public class GameScreen implements Screen {
         for (Map.Entry<String, PlayerRole> entry : roles.entrySet()) {
             String playerId = entry.getKey();
             PlayerRole role = entry.getValue();
+            
+            // ★ 위치 가져오기 (없으면 null)
+            float[] pos = positions != null ? positions.get(playerId) : null;
 
-            Player player = createPlayerWithRole(playerId, role);
+            Player player = createPlayerWithRole(playerId, role, pos);
             players.put(playerId, player);
 
             if (playerId.equals(myPlayerId)) {
@@ -527,13 +539,23 @@ public class GameScreen implements Screen {
         }
     }
 
-    // ★ 역할에 따라 플레이어 생성
-    private Player createPlayerWithRole(String playerId, PlayerRole role) {
+    // ★ 역할에 따라 플레이어 생성 (위치 포함)
+    private Player createPlayerWithRole(String playerId, PlayerRole role, float[] pos) {
         float heroH = worldH * 0.15f;
         
-        // 랜덤 시작 위치
-        float startX = worldW * (0.2f + (float)Math.random() * 0.6f);
-        float startY = worldH * (0.3f + (float)Math.random() * 0.4f);
+        // ★ 위치 설정 (서버에서 받은 위치 or 랜덤)
+        float startX, startY;
+        if (pos != null && (pos[0] > 0 || pos[1] > 0)) {
+            // 서버에서 받은 위치 사용
+            startX = pos[0];
+            startY = pos[1];
+            Gdx.app.log("GAME", playerId + " 서버 위치: (" + startX + ", " + startY + ")");
+        } else {
+            // 랜덤 위치
+            startX = worldW * (0.2f + (float)Math.random() * 0.6f);
+            startY = worldH * (0.3f + (float)Math.random() * 0.4f);
+            Gdx.app.log("GAME", playerId + " 랜덤 위치: (" + startX + ", " + startY + ")");
+        }
 
         if (role == PlayerRole.CHASER) {
             // ★ Chaser 생성
