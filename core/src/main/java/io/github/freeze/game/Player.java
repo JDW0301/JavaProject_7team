@@ -317,10 +317,9 @@ public class Player {
         TextureRegion frame = anim.getKeyFrame(attackAnimTimer);
         ((TextureRegionDrawable)image.getDrawable()).setRegion(frame);
 
-        // 애니메이션 종료
+        // ★ 애니메이션 끝나면 루프 (Q 떼면 cancelAttack()으로 종료)
         if (attackAnimTimer >= ATTACK_FRAME_DURATION * 12) {
-            state = PlayerState.NORMAL;
-            attackAnimTimer = 0f;
+            attackAnimTimer = 0f;  // 루프
         }
     }
 
@@ -354,7 +353,8 @@ public class Player {
     }
 
     public void startUnfreeze() {
-        if (state != PlayerState.FROZEN) return;
+        // FROZEN이거나 FREEZING 상태에서 해빙 가능
+        if (state != PlayerState.FROZEN && state != PlayerState.FREEZING) return;
         state = PlayerState.UNFREEZING;
         freezeAnimTimer = 0f;
     }
@@ -362,11 +362,19 @@ public class Player {
     // === Chaser 공격 ===
     public void startAttack() {
         if (role != PlayerRole.CHASER) return;
-        if (state != PlayerState.NORMAL) return;
+        if (state != PlayerState.NORMAL && state != PlayerState.ATTACKING) return;
 
         state = PlayerState.ATTACKING;
         attackAnimTimer = 0f;
         if (attackSkill != null) attackSkill.use();
+    }
+    
+    // ★ 공격 취소
+    public void cancelAttack() {
+        if (state == PlayerState.ATTACKING) {
+            state = PlayerState.NORMAL;
+            attackAnimTimer = 0f;
+        }
     }
 
     // === Runner 스킬 ===

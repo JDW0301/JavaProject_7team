@@ -731,25 +731,43 @@ public class GameScreen implements Screen {
     }
 
     private void handleChaserSkills() {
-        // Q: 공격
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
-            myPlayer.startAttack();
-            Gdx.app.log("TEST", "Chaser Q 공격!");
+        // Q: 공격 (누르고 있는 동안만)
+        if (Gdx.input.isKeyPressed(Input.Keys.Q)) {
+            // 공격 시작/유지
+            if (!myPlayer.isAttacking()) {
+                myPlayer.startAttack();
+                Gdx.app.log("TEST", "Chaser Q 공격 시작!");
+            }
 
-            // 범위 내 Runner 빙결
+            // 범위 내 Runner 빙결 시작/유지
             for (Player p : players.values()) {
                 if (p.getRole() == PlayerRole.RUNNER) {
                     float dist = myPlayer.distanceTo(p);
-                    Gdx.app.log("TEST", "Runner " + p.getPlayerId() + " 거리: " + dist + ", 얼음: " + p.isFrozen());
                     
-                    if (!p.isFrozen() && dist <= FREEZE_RANGE) {
-                        // ★ 테스트 모드: 직접 얼리기
-                        if (localTestMode) {
-                            p.startFreeze();
-                            Gdx.app.log("TEST", "★ Chaser가 " + p.getPlayerId() + " 얼림!");
-                        } else {
-                            Net.get().sendFreeze(p.getPlayerId());
+                    if (dist <= FREEZE_RANGE) {
+                        // 범위 안 → 빙결 시작/유지
+                        if (!p.isFrozen() && p.getState() != PlayerState.FREEZING) {
+                            if (localTestMode) {
+                                p.startFreeze();
+                                Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 빙결 시작!");
+                            } else {
+                                Net.get().sendFreeze(p.getPlayerId());
+                            }
                         }
+                    }
+                }
+            }
+        } else {
+            // Q 뗌 → 공격 멈춤
+            if (myPlayer.isAttacking()) {
+                myPlayer.cancelAttack();
+                Gdx.app.log("TEST", "Chaser Q 공격 멈춤!");
+                
+                // 빙결 중인 Runner들 해빙 시작
+                for (Player p : players.values()) {
+                    if (p.getRole() == PlayerRole.RUNNER && p.getState() == PlayerState.FREEZING) {
+                        p.startUnfreeze();
+                        Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 해빙 시작!");
                     }
                 }
             }
