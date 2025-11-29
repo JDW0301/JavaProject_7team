@@ -658,7 +658,10 @@ public class GameScreen implements Screen {
             if (!localTestMode) {
                 moveSendTimer += delta;
                 if (moveSendTimer >= MOVE_SEND_INTERVAL) {
-                    Net.get().sendPlayerMove(myPlayerId, dx, dy);
+                    // ★ 좌표도 함께 전송!
+                    float px = myPlayer.getImage().getX();
+                    float py = myPlayer.getImage().getY();
+                    Net.get().sendPlayerMove(myPlayerId, dx, dy, px, py);
                     moveSendTimer = 0f;
                 }
             }
@@ -973,6 +976,13 @@ public class GameScreen implements Screen {
         // 플레이어 업데이트
         for (Player p : players.values()) {
             p.update(delta);
+            
+            // ★ 해빙 완료 시 서버 전송
+            String unfreezeTargetId = p.popUnfreezeCompletedTargetId();
+            if (unfreezeTargetId != null && !localTestMode) {
+                Net.get().sendUnfreeze(unfreezeTargetId);
+                Gdx.app.log("GAME", "Runner " + p.getPlayerId() + " → " + unfreezeTargetId + " 해빙 완료! 서버 전송");
+            }
         }
 
         // 카메라

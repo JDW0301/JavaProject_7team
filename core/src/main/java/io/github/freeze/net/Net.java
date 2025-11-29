@@ -160,12 +160,14 @@ public final class Net {
         sendJson(msg);
     }
     
-    // 플레이어 이동 (★ dx, dy로 변경!)
-    public void sendPlayerMove(String playerId, float dx, float dy) {
+    // 플레이어 이동 (★ x, y 좌표도 전송!)
+    public void sendPlayerMove(String playerId, float dx, float dy, float x, float y) {
         Map<String,Object> payload = new HashMap<>();
         payload.put("playerId", playerId);
-        payload.put("dx", dx);  // ★ x → dx
-        payload.put("dy", dy);  // ★ y → dy
+        payload.put("dx", dx);
+        payload.put("dy", dy);
+        payload.put("x", x);    // ★ 좌표 추가
+        payload.put("y", y);    // ★ 좌표 추가
         
         Map<String,Object> msg = new HashMap<>();
         msg.put("type", "move");

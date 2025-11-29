@@ -57,6 +57,7 @@ public class Player {
     // 해빙 진행
     private float unfreezeProgress = 0f;
     private Player unfreezeTarget = null;
+    private String unfreezeCompletedTargetId = null;  // ★ 해빙 완료된 타겟 ID
     
     // ★ 닉네임
     private String nickname;
@@ -337,11 +338,19 @@ public class Player {
 
         if (unfreezeProgress >= 3f && unfreezeTarget != null) {
             // 해빙 성공
+            unfreezeCompletedTargetId = unfreezeTarget.getPlayerId();  // ★ 타겟 ID 저장
             unfreezeTarget.startUnfreeze();
             unfreezeProgress = 0f;
             unfreezeTarget = null;
             state = PlayerState.NORMAL;
         }
+    }
+    
+    // ★ 해빙 완료된 타겟 ID 가져오기 (가져오면 초기화)
+    public String popUnfreezeCompletedTargetId() {
+        String id = unfreezeCompletedTargetId;
+        unfreezeCompletedTargetId = null;
+        return id;
     }
 
     // === 빙결/해빙 ===
