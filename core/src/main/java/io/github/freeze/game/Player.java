@@ -31,7 +31,7 @@ public class Player {
     private Animation<TextureRegion> runnerDashLeft, runnerDashRight;
     private Texture[][] freezeLeftFrames;   // [walkFrame][freezeFrame]
     private Texture[][] freezeRightFrames;
-    private Texture idleTexture;  // Front_C 정지 이미지
+    private Texture idleTexture;  // ★ 정지 상태 텍스처 (Runner: Front_C, Chaser: chaser1)
 
     private float animTime = 0f;
     private int currentWalkFrame = 0;  // 현재 걷기 프레임 (0~7)
@@ -40,7 +40,8 @@ public class Player {
     // 빙결 관련
     private int freezeMotionFrame = 0;  // 빙결 애니메이션 프레임 (0~4)
     private float freezeAnimTimer = 0f;
-    private static final float FREEZE_FRAME_DURATION = 0.08f; // 5프레임 = 0.4초
+    private static final float FREEZE_FRAME_DURATION = 0.6f;   // ★ 빙결: 5프레임 = 3초
+    private static final float UNFREEZE_FRAME_DURATION = 0.6f; // ★ 해빙: 5프레임 = 3초
 
     // 스킬 (Runner용)
     private Skill fogSkill;      // Q: 안개 (쿨타임 10초, 지속 2초)
@@ -50,11 +51,15 @@ public class Player {
     // Chaser 공격
     private Skill attackSkill;   // Q: 공격 (쿨타임 없음, 애니메이션 시간)
     private float attackAnimTimer = 0f;
-    private static final float ATTACK_FRAME_DURATION = 0.05f; // 12프레임 = 0.6초
+    private static final float ATTACK_FRAME_DURATION = 0.25f; // ★ 12프레임 = 3초
+    private static final float ATTACK_TOTAL_TIME = ATTACK_FRAME_DURATION * 12;  // 총 공격 시간 3초
 
     // 해빙 진행
     private float unfreezeProgress = 0f;
     private Player unfreezeTarget = null;
+    
+    // ★ 닉네임
+    private String nickname;
 
     public Player(String playerId, PlayerRole role, Image image) {
         this.playerId = playerId;
@@ -68,7 +73,7 @@ public class Player {
         if (role == PlayerRole.RUNNER) {
             fogSkill = new Skill(10f, 3f);
             dashSkill = new Skill(5f, 0.2f);  // 쿨타임 5초, 지속시간 0.2초
-            unfreezeSkill = new Skill(0f, 2f);
+            unfreezeSkill = new Skill(0f, 3f);  // ★ 해빙 3초
         } else {
             attackSkill = new Skill(0f, 0.6f); // 공격 애니메이션 시간
         }
@@ -91,12 +96,20 @@ public class Player {
     public float getSpeed() { return currentSpeed; }
     public boolean isFacingRight() { return facingRight; }
     public void setFacingRight(boolean right) { this.facingRight = right; }
-
-    // === 애니메이션 설정 ===
-    public void setIdleTexture(Texture texture) {
-        this.idleTexture = texture;
+    
+    // ★ 닉네임
+    public String getNickname() { return nickname != null ? nickname : playerId; }
+    public void setNickname(String nickname) { this.nickname = nickname; }
+    
+    // ★ 공격 게이지 진행도 (0.0 ~ 1.0)
+    public float getAttackProgress() {
+        if (state == PlayerState.ATTACKING) {
+            return Math.min(attackAnimTimer / ATTACK_TOTAL_TIME, 1f);
+        }
+        return 0f;
     }
 
+    // === 애니메이션 설정 ===
     public void setWalkAnimations(Animation<TextureRegion> left, Animation<TextureRegion> right) {
         this.walkLeft = left;
         this.walkRight = right;
@@ -115,6 +128,11 @@ public class Player {
     public void setFreezeFrames(Texture[][] left, Texture[][] right) {
         this.freezeLeftFrames = left;
         this.freezeRightFrames = right;
+    }
+
+    // ★ idle 텍스처 설정
+    public void setIdleTexture(Texture texture) {
+        this.idleTexture = texture;
     }
 
     // === 스킬 ===
@@ -168,10 +186,17 @@ public class Player {
     // 이동 멈춤 (velocity 초기화)
     public void stopMoving() {
         velocity.set(0, 0);
+    }
+    
+    // ★ 방향만 설정 (이동 없이 애니메이션용)
+    public void updateDirection(float dx, float dy) {
+        if (dx > 0) facingRight = true;
+        else if (dx < 0) facingRight = false;
         
-        // Front_C 이미지로 변경
-        if (idleTexture != null && state == PlayerState.NORMAL) {
-            ((TextureRegionDrawable)image.getDrawable()).setRegion(new TextureRegion(idleTexture));
+        // velocity 설정 (애니메이션 재생용)
+        float len = (float)Math.sqrt(dx*dx + dy*dy);
+        if (len > 0f) {
+            velocity.set(dx / len, dy / len);
         }
     }
 
@@ -226,11 +251,11 @@ public class Player {
             // 현재 걷기 프레임 계산 (0~7)
             currentWalkFrame = anim.getKeyFrameIndex(animTime);
         } else {
-            // 정지 시 Front_C 이미지
+            // ★ 정지 시 idle 텍스처 사용 (Runner: Front_C, Chaser: chaser1)
             if (idleTexture != null) {
                 ((TextureRegionDrawable)image.getDrawable()).setRegion(new TextureRegion(idleTexture));
             } else {
-                // idleTexture가 없으면 첫 프레임 사용
+                // fallback: 첫 프레임
                 Animation<TextureRegion> anim = facingRight ? walkRight : walkLeft;
                 TextureRegion frame = anim.getKeyFrame(0);
                 ((TextureRegionDrawable)image.getDrawable()).setRegion(frame);
@@ -265,8 +290,8 @@ public class Player {
     private void updateUnfreezingAnimation(float delta) {
         freezeAnimTimer += delta;
 
-        // 역순 5프레임 (4→0)
-        int frame = 4 - (int)(freezeAnimTimer / FREEZE_FRAME_DURATION);
+        // 역순 5프레임 (4→0) - 해빙 애니 3초
+        int frame = 4 - (int)(freezeAnimTimer / UNFREEZE_FRAME_DURATION);
         if (frame < 0) {
             frame = 0;
             state = PlayerState.NORMAL;
@@ -311,7 +336,7 @@ public class Player {
     private void updateUnfreezeProgress(float delta) {
         unfreezeProgress += delta;
 
-        if (unfreezeProgress >= 2f && unfreezeTarget != null) {
+        if (unfreezeProgress >= 3f && unfreezeTarget != null) {
             // 해빙 성공
             unfreezeTarget.startUnfreeze();
             unfreezeProgress = 0f;
@@ -395,7 +420,17 @@ public class Player {
     }
 
     public float getUnfreezeProgress() {
-        return unfreezeProgress / 2f; // 0~1
+        return unfreezeProgress / 3f; // 0~1 (3초)
+    }
+    
+    // ★ 해빙 타겟 가져오기
+    public Player getUnfreezeTarget() {
+        return unfreezeTarget;
+    }
+    
+    // ★ 해빙 중인지 확인
+    public boolean isUnfreezingTarget() {
+        return state == PlayerState.UNFREEZING_TARGET && unfreezeTarget != null;
     }
 
     // === 충돌 박스 ===

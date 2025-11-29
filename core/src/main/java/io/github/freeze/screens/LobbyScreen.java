@@ -201,8 +201,28 @@ public class LobbyScreen implements Screen {
             @Override
             public void onGameStart(String roleJson) {
                 Gdx.app.log("LOBBY", "게임 시작! roleJson=" + roleJson);
-                // GameScreen으로 이동
-                app.setScreen(new GameScreen(app));
+                
+                // ★ roleJson 파싱해서 역할 정보 추출
+                Map<String, PlayerRole> roles = new HashMap<>();
+                
+                try {
+                    com.google.gson.JsonObject jo = com.google.gson.JsonParser.parseString(roleJson).getAsJsonObject();
+                    
+                    if (jo.has("roles")) {
+                        com.google.gson.JsonObject rolesObj = jo.getAsJsonObject("roles");
+                        for (String playerId : rolesObj.keySet()) {
+                            String roleStr = rolesObj.get(playerId).getAsString();
+                            PlayerRole role = "CHASER".equalsIgnoreCase(roleStr) ? PlayerRole.CHASER : PlayerRole.RUNNER;
+                            roles.put(playerId, role);
+                            Gdx.app.log("LOBBY", "역할 배정: " + playerId + " → " + role);
+                        }
+                    }
+                } catch (Exception e) {
+                    Gdx.app.error("LOBBY", "역할 파싱 실패: " + e.getMessage());
+                }
+                
+                // ★ GameScreen으로 이동 (역할 정보 전달)
+                app.setScreen(new GameScreen(app, roles));
             }
 
             @Override
@@ -321,13 +341,8 @@ public class LobbyScreen implements Screen {
         if (dx != 0f || dy != 0f) {
             movePlayer(me, dx, dy, delta);
             
-            // ★ 주기적으로 서버에 이동 전송
-            moveSendTimer += delta;
-            if (moveSendTimer >= MOVE_SEND_INTERVAL) {
-                Image img = me.getImage();
-                Net.get().sendPlayerMove(myPlayerId, dx, dy);  // dx, dy 전송
-                moveSendTimer = 0f;
-            }
+            // ★ 로비에서는 서버에 이동 안 보냄! (NOT_PLAYING 에러 방지)
+            // GameScreen에서만 move 전송함
         } else {
             me.stopMoving();
             moveSendTimer = 0f;
@@ -369,12 +384,9 @@ public class LobbyScreen implements Screen {
             
             Gdx.app.log("LOBBY", "Ready: " + newReady);
             
-            // ★ 서버에 Ready 상태 전송 (서버가 지원 안 해도 무시)
-            try {
-                Net.get().sendReady(myPlayerId, newReady);
-            } catch (Exception e) {
-                Gdx.app.log("LOBBY", "Ready 전송 실패 (서버 미지원 가능): " + e.getMessage());
-            }
+            // ★ 서버가 Ready 미지원 (UNKNOWN_TYPE 에러)
+            // 로컬에서만 관리
+            // Net.get().sendReady(myPlayerId, newReady);
             
             updatePlayerCount();
         }

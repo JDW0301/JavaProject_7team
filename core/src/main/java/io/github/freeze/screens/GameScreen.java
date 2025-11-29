@@ -13,6 +13,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.*;
 import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.Preferences;
 
 import io.github.freeze.Core;
 import io.github.freeze.game.*;
@@ -32,8 +33,8 @@ public class GameScreen implements Screen {
     private static final int VW = 1280, VH = 960;
 
     // 거리 상수
-    private static final float FREEZE_RANGE = 100f;      // 1m = 100 픽셀
-    private static final float UNFREEZE_RANGE = 60f;     // 0.6m = 60 픽셀
+    private static final float FREEZE_RANGE = 250f;      // ★ 공격 범위
+    private static final float UNFREEZE_RANGE = 100f;    // 해빙 범위
 
     private final Core app;
     private final Stage stage;
@@ -54,6 +55,7 @@ public class GameScreen implements Screen {
     private Texture[] texLeft  = new Texture[8];
 
     // Chaser 텍스처
+    private Texture texChaserIdle;  // ★ Chaser idle (chaser1.png)
     private Texture[] texChaserLeft = new Texture[8];
     private Texture[] texChaserRight = new Texture[8];
     private Texture[] texChaserAttackL = new Texture[12];
@@ -79,6 +81,9 @@ public class GameScreen implements Screen {
 
     // 해빙 게이지
     private Texture texGage1, texGage2;  // gage1.png, gage2.png
+    
+    // ★ 닉네임/게이지 표시용
+    private com.badlogic.gdx.graphics.g2d.BitmapFont font;
 
     // 월드
     private Group world;
@@ -89,6 +94,10 @@ public class GameScreen implements Screen {
     private Map<String, Player> players = new HashMap<>();
     private String myPlayerId;
     private Player myPlayer;
+
+    // ★ 로컬 테스트 모드
+    private boolean localTestMode = true;  // true면 테스트 모드
+    private Player testRunner;  // 화살표로 조작할 Runner
 
     // UI
     private SkillUI skillUI;
@@ -102,7 +111,15 @@ public class GameScreen implements Screen {
     private float moveSendTimer = 0f;
     private static final float MOVE_SEND_INTERVAL = 0.05f; // 20fps로 위치 전송
 
+    // ★ 서버에서 받은 역할 정보
+    private Map<String, PlayerRole> serverRoles = new HashMap<>();
+
     public GameScreen(Core app) {
+        this(app, null);  // 테스트 모드
+    }
+
+    // ★ 서버 연동용 생성자
+    public GameScreen(Core app, Map<String, PlayerRole> roles) {
         this.app = app;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
@@ -113,8 +130,16 @@ public class GameScreen implements Screen {
         setupUI();
         setupNetworkListener();
 
-        // 테스트용: 로컬 플레이어 생성
-        createTestPlayers();
+        if (roles != null && !roles.isEmpty()) {
+            // ★ 서버 모드: 역할 정보로 플레이어 생성
+            localTestMode = false;
+            serverRoles = roles;
+            createPlayersFromServer(roles);
+        } else {
+            // ★ 테스트 모드: 로컬 플레이어 생성
+            localTestMode = true;
+            createTestPlayers();
+        }
     }
 
     // ========== 텍스처 로딩 ==========
@@ -132,6 +157,7 @@ public class GameScreen implements Screen {
         }
 
         // Chaser 텍스처
+        texChaserIdle = load("images/chaser1.png");  // ★ Chaser idle
         for (int i = 0; i < 8; i++) {
             texChaserLeft[i] = load("images/Chaser_Left" + (i + 1) + ".png");
             texChaserRight[i] = load("images/Chaser_Right" + (i + 1) + ".png");
@@ -180,6 +206,11 @@ public class GameScreen implements Screen {
         // 해빙 게이지
         texGage1 = load("images/gage1.png");
         texGage2 = load("images/gage2.png");
+        
+        // ★ 폰트 생성
+        font = new com.badlogic.gdx.graphics.g2d.BitmapFont();
+        font.setColor(com.badlogic.gdx.graphics.Color.WHITE);
+        font.getData().setScale(1.2f);
     }
 
     // ========== 월드 설정 ==========
@@ -362,49 +393,230 @@ public class GameScreen implements Screen {
 
     // ========== 테스트용 플레이어 생성 ==========
     private void createTestPlayers() {
-        // 임시: 로컬 플레이어 생성
-        myPlayerId = "player1";
+        float heroH = worldH * 0.15f;
+        
+        // ★ 내 캐릭터: CHASER (WASD + Q로 공격)
+        myPlayerId = "chaser1";
+        
+        // ★ Chaser는 chaser1.png로 시작
+        Image chaserImage = new Image(new TextureRegionDrawable(new TextureRegion(texChaserIdle)));
+        float sChaser = heroH / texChaserIdle.getHeight();
+        chaserImage.setSize(texChaserIdle.getWidth() * sChaser, texChaserIdle.getHeight() * sChaser);
+        chaserImage.setPosition(worldW * 0.3f - chaserImage.getWidth() / 2f,
+                              worldH * 0.5f - chaserImage.getHeight() / 2f);
+        world.addActor(chaserImage);
 
-        Image heroImage = new Image(new TextureRegionDrawable(new TextureRegion(texIdle)));
-        float heroH = worldH * 0.15f;  // 0.1f 고정!
-        float sHero = heroH / texIdle.getHeight();
-        heroImage.setSize(texIdle.getWidth() * sHero, texIdle.getHeight() * sHero);
-        heroImage.setPosition(worldW * 0.5f - heroImage.getWidth() / 2f,
-                              worldH * 0.5f - heroImage.getHeight() / 2f);
-        world.addActor(heroImage);
+        myPlayer = new Player(myPlayerId, PlayerRole.CHASER, chaserImage);
+        myPlayer.setPosition(chaserImage.getX(), chaserImage.getY());
+        myPlayer.setNickname("술래");  // ★ 테스트용 닉네임
 
-        myPlayer = new Player(myPlayerId, PlayerRole.RUNNER, heroImage);
-        myPlayer.setPosition(heroImage.getX(), heroImage.getY());
+        // Chaser 애니메이션 설정
+        Array<TextureRegion> chaserRightFrames = new Array<>();
+        for (Texture t : texChaserRight) chaserRightFrames.add(new TextureRegion(t));
+        Animation<TextureRegion> chaserWalkRight = new Animation<>(0.09f, chaserRightFrames, Animation.PlayMode.LOOP);
 
-        // 애니메이션 설정
-        Array<TextureRegion> rightFrames = new Array<>();
-        for (Texture t : texRight) rightFrames.add(new TextureRegion(t));
-        Animation<TextureRegion> walkRight = new Animation<>(0.09f, rightFrames, Animation.PlayMode.LOOP);
+        Array<TextureRegion> chaserLeftFrames = new Array<>();
+        for (Texture t : texChaserLeft) chaserLeftFrames.add(new TextureRegion(t));
+        Animation<TextureRegion> chaserWalkLeft = new Animation<>(0.09f, chaserLeftFrames, Animation.PlayMode.LOOP);
 
-        Array<TextureRegion> leftFrames = new Array<>();
-        for (Texture t : texLeft) leftFrames.add(new TextureRegion(t));
-        Animation<TextureRegion> walkLeft = new Animation<>(0.09f, leftFrames, Animation.PlayMode.LOOP);
+        myPlayer.setWalkAnimations(chaserWalkLeft, chaserWalkRight);
+        myPlayer.setIdleTexture(texChaserIdle);  // ★ Chaser idle 이미지
 
-        myPlayer.setWalkAnimations(walkLeft, walkRight);
-        myPlayer.setIdleTexture(texIdle);  // Front_C 정지 이미지 설정
-
-        // 대시 애니메이션
-        Array<TextureRegion> dashL = new Array<>();
-        dashL.add(new TextureRegion(texRunnerDashL));
-        Array<TextureRegion> dashR = new Array<>();
-        dashR.add(new TextureRegion(texRunnerDashR));
-        myPlayer.setRunnerDashAnimations(
-            new Animation<>(1f, dashL, Animation.PlayMode.NORMAL),
-            new Animation<>(1f, dashR, Animation.PlayMode.NORMAL)
+        // Chaser 공격 애니메이션
+        Array<TextureRegion> attackL = new Array<>();
+        for (Texture t : texChaserAttackL) attackL.add(new TextureRegion(t));
+        Array<TextureRegion> attackR = new Array<>();
+        for (Texture t : texChaserAttackR) attackR.add(new TextureRegion(t));
+        myPlayer.setChaserAttackAnimations(
+            new Animation<>(0.25f, attackL, Animation.PlayMode.NORMAL),
+            new Animation<>(0.25f, attackR, Animation.PlayMode.NORMAL)
         );
-
-        // 빙결 프레임 설정
-        myPlayer.setFreezeFrames(freezeLeftFrames, freezeRightFrames);
 
         players.put(myPlayerId, myPlayer);
 
-        heroImage.toFront();
+        // ★ 테스트용 Runner (화살표로 조작)
+        if (localTestMode) {
+            String runnerId = "runner1";
+            
+            Image runnerImage = new Image(new TextureRegionDrawable(new TextureRegion(texIdle)));
+            float sRunner = heroH / texIdle.getHeight();
+            runnerImage.setSize(texIdle.getWidth() * sRunner, texIdle.getHeight() * sRunner);
+            runnerImage.setPosition(worldW * 0.7f - runnerImage.getWidth() / 2f,
+                                  worldH * 0.5f - runnerImage.getHeight() / 2f);
+            world.addActor(runnerImage);
+
+            testRunner = new Player(runnerId, PlayerRole.RUNNER, runnerImage);
+            testRunner.setPosition(runnerImage.getX(), runnerImage.getY());
+            testRunner.setNickname("도망자");  // ★ 테스트용 닉네임
+
+            // Runner 애니메이션 설정
+            Array<TextureRegion> rightFrames = new Array<>();
+            for (Texture t : texRight) rightFrames.add(new TextureRegion(t));
+            Animation<TextureRegion> walkRight = new Animation<>(0.09f, rightFrames, Animation.PlayMode.LOOP);
+
+            Array<TextureRegion> leftFrames = new Array<>();
+            for (Texture t : texLeft) leftFrames.add(new TextureRegion(t));
+            Animation<TextureRegion> walkLeft = new Animation<>(0.09f, leftFrames, Animation.PlayMode.LOOP);
+
+            testRunner.setWalkAnimations(walkLeft, walkRight);
+            testRunner.setIdleTexture(texIdle);
+
+            // 대시 애니메이션
+            Array<TextureRegion> dashL = new Array<>();
+            dashL.add(new TextureRegion(texRunnerDashL));
+            Array<TextureRegion> dashR = new Array<>();
+            dashR.add(new TextureRegion(texRunnerDashR));
+            testRunner.setRunnerDashAnimations(
+                new Animation<>(1f, dashL, Animation.PlayMode.NORMAL),
+                new Animation<>(1f, dashR, Animation.PlayMode.NORMAL)
+            );
+
+            // 빙결 프레임 설정
+            testRunner.setFreezeFrames(freezeLeftFrames, freezeRightFrames);
+
+            players.put(runnerId, testRunner);
+            
+            Gdx.app.log("TEST", "로컬 테스트 모드 ON - Chaser(WASD/Q), Runner(화살표)");
+        }
+
+        chaserImage.toFront();
         centerCameraOnPlayer(myPlayer);
+    }
+
+    // ========== 서버 모드: 역할 정보로 플레이어 생성 ==========
+    private void createPlayersFromServer(Map<String, PlayerRole> roles) {
+        // ★ Preferences에서 내 닉네임 가져오기
+        Preferences pref = Gdx.app.getPreferences("settings");
+        String myNick = pref.getString("nickname", "");
+        if (myNick.isEmpty()) {
+            myNick = "Player" + (int)(Math.random() * 10000);
+        }
+        myPlayerId = myNick;
+
+        Gdx.app.log("GAME", "서버 모드 - 플레이어 생성 시작 (내 ID: " + myPlayerId + ")");
+
+        for (Map.Entry<String, PlayerRole> entry : roles.entrySet()) {
+            String playerId = entry.getKey();
+            PlayerRole role = entry.getValue();
+
+            Player player = createPlayerWithRole(playerId, role);
+            players.put(playerId, player);
+
+            if (playerId.equals(myPlayerId)) {
+                myPlayer = player;
+                Gdx.app.log("GAME", "내 캐릭터 생성: " + playerId + " (" + role + ")");
+            } else {
+                Gdx.app.log("GAME", "다른 플레이어 생성: " + playerId + " (" + role + ")");
+            }
+        }
+
+        if (myPlayer != null) {
+            myPlayer.getImage().toFront();
+            centerCameraOnPlayer(myPlayer);
+        }
+    }
+
+    // ★ 역할에 따라 플레이어 생성
+    private Player createPlayerWithRole(String playerId, PlayerRole role) {
+        float heroH = worldH * 0.15f;
+        
+        // 랜덤 시작 위치
+        float startX = worldW * (0.2f + (float)Math.random() * 0.6f);
+        float startY = worldH * (0.3f + (float)Math.random() * 0.4f);
+
+        if (role == PlayerRole.CHASER) {
+            // ★ Chaser 생성
+            Image chaserImage = new Image(new TextureRegionDrawable(new TextureRegion(texChaserIdle)));
+            float scale = heroH / texChaserIdle.getHeight();
+            chaserImage.setSize(texChaserIdle.getWidth() * scale, texChaserIdle.getHeight() * scale);
+            chaserImage.setPosition(startX, startY);
+            world.addActor(chaserImage);
+
+            Player player = new Player(playerId, PlayerRole.CHASER, chaserImage);
+            player.setPosition(startX, startY);
+            player.setNickname(playerId);  // ★ 서버에서 받은 ID를 닉네임으로
+
+            // Chaser 애니메이션
+            Array<TextureRegion> chaserRightFrames = new Array<>();
+            for (Texture t : texChaserRight) chaserRightFrames.add(new TextureRegion(t));
+            Animation<TextureRegion> chaserWalkRight = new Animation<>(0.09f, chaserRightFrames, Animation.PlayMode.LOOP);
+
+            Array<TextureRegion> chaserLeftFrames = new Array<>();
+            for (Texture t : texChaserLeft) chaserLeftFrames.add(new TextureRegion(t));
+            Animation<TextureRegion> chaserWalkLeft = new Animation<>(0.09f, chaserLeftFrames, Animation.PlayMode.LOOP);
+
+            player.setWalkAnimations(chaserWalkLeft, chaserWalkRight);
+            player.setIdleTexture(texChaserIdle);
+
+            // Chaser 공격 애니메이션
+            Array<TextureRegion> attackL = new Array<>();
+            for (Texture t : texChaserAttackL) attackL.add(new TextureRegion(t));
+            Array<TextureRegion> attackR = new Array<>();
+            for (Texture t : texChaserAttackR) attackR.add(new TextureRegion(t));
+            player.setChaserAttackAnimations(
+                new Animation<>(0.25f, attackL, Animation.PlayMode.NORMAL),
+                new Animation<>(0.25f, attackR, Animation.PlayMode.NORMAL)
+            );
+
+            return player;
+
+        } else {
+            // ★ Runner 생성
+            Image runnerImage = new Image(new TextureRegionDrawable(new TextureRegion(texIdle)));
+            float scale = heroH / texIdle.getHeight();
+            runnerImage.setSize(texIdle.getWidth() * scale, texIdle.getHeight() * scale);
+            runnerImage.setPosition(startX, startY);
+            world.addActor(runnerImage);
+
+            Player player = new Player(playerId, PlayerRole.RUNNER, runnerImage);
+            player.setPosition(startX, startY);
+            player.setNickname(playerId);  // ★ 서버에서 받은 ID를 닉네임으로
+
+            // Runner 애니메이션
+            Array<TextureRegion> rightFrames = new Array<>();
+            for (Texture t : texRight) rightFrames.add(new TextureRegion(t));
+            Animation<TextureRegion> walkRight = new Animation<>(0.09f, rightFrames, Animation.PlayMode.LOOP);
+
+            Array<TextureRegion> leftFrames = new Array<>();
+            for (Texture t : texLeft) leftFrames.add(new TextureRegion(t));
+            Animation<TextureRegion> walkLeft = new Animation<>(0.09f, leftFrames, Animation.PlayMode.LOOP);
+
+            player.setWalkAnimations(walkLeft, walkRight);
+            player.setIdleTexture(texIdle);
+
+            // 대시 애니메이션
+            Array<TextureRegion> dashL = new Array<>();
+            dashL.add(new TextureRegion(texRunnerDashL));
+            Array<TextureRegion> dashR = new Array<>();
+            dashR.add(new TextureRegion(texRunnerDashR));
+            player.setRunnerDashAnimations(
+                new Animation<>(1f, dashL, Animation.PlayMode.NORMAL),
+                new Animation<>(1f, dashR, Animation.PlayMode.NORMAL)
+            );
+
+            // 빙결 프레임
+            player.setFreezeFrames(freezeLeftFrames, freezeRightFrames);
+
+            return player;
+        }
+    }
+
+    // ★ 다른 플레이어 추가 (게임 중 입장)
+    public void addOtherPlayer(String playerId, PlayerRole role) {
+        if (players.containsKey(playerId)) return;
+
+        Player player = createPlayerWithRole(playerId, role);
+        players.put(playerId, player);
+        Gdx.app.log("GAME", "플레이어 추가: " + playerId + " (" + role + ")");
+    }
+
+    // ★ 플레이어 제거 (퇴장)
+    public void removePlayer(String playerId) {
+        Player player = players.remove(playerId);
+        if (player != null && player.getImage() != null) {
+            player.getImage().remove();
+            Gdx.app.log("GAME", "플레이어 제거: " + playerId);
+        }
     }
 
     // ========== 입력 처리 ==========
@@ -421,11 +633,13 @@ public class GameScreen implements Screen {
         if (dx != 0f || dy != 0f) {
             movePlayerWithCollision(myPlayer, dx, dy, delta);
 
-            // ★ 주기적으로 서버에 이동량 전송 (dx, dy)
-            moveSendTimer += delta;
-            if (moveSendTimer >= MOVE_SEND_INTERVAL) {
-                Net.get().sendPlayerMove(myPlayerId, dx, dy);  // 좌표가 아니라 이동량!
-                moveSendTimer = 0f;
+            // ★ 테스트 모드가 아닐 때만 서버 전송
+            if (!localTestMode) {
+                moveSendTimer += delta;
+                if (moveSendTimer >= MOVE_SEND_INTERVAL) {
+                    Net.get().sendPlayerMove(myPlayerId, dx, dy);
+                    moveSendTimer = 0f;
+                }
             }
         } else {
             // 이동 안 할 때 velocity 초기화 (애니메이션 멈춤)
@@ -437,6 +651,50 @@ public class GameScreen implements Screen {
             handleRunnerSkills();
         } else if (myPlayer.getRole() == PlayerRole.CHASER) {
             handleChaserSkills();
+        }
+        
+        // ★ 테스트 모드: 화살표 키로 testRunner 조작
+        if (localTestMode && testRunner != null && testRunner.canMove()) {
+            handleTestRunnerInput(delta);
+        }
+    }
+    
+    // ★ 테스트용 Runner 조작 (화살표 키)
+    private void handleTestRunnerInput(float delta) {
+        float dx = 0f, dy = 0f;
+        if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) dx -= 1f;
+        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dx += 1f;
+        if (Gdx.input.isKeyPressed(Input.Keys.UP)) dy += 1f;
+        if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) dy -= 1f;
+
+        if (dx != 0f || dy != 0f) {
+            movePlayerWithCollision(testRunner, dx, dy, delta);
+        } else {
+            testRunner.stopMoving();
+        }
+        
+        // NUMPAD 1: 안개 스킬
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_1)) {
+            testRunner.useFogSkill();
+            if (testRunner.getFogSkill().isActive()) {
+                // Chaser 화면에 안개 표시
+                fogEffect.activate();
+                Gdx.app.log("TEST", "Runner 안개 스킬!");
+            }
+        }
+        
+        // NUMPAD 2: 대시 스킬
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_2)) {
+            testRunner.useDashSkill();
+            Gdx.app.log("TEST", "Runner 대시 스킬!");
+        }
+        
+        // NUMPAD 3: 해동 (자기 자신)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_3)) {
+            if (testRunner.isFrozen()) {
+                testRunner.startUnfreeze();
+                Gdx.app.log("TEST", "Runner 해동!");
+            }
         }
     }
 
@@ -476,12 +734,22 @@ public class GameScreen implements Screen {
         // Q: 공격
         if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
             myPlayer.startAttack();
+            Gdx.app.log("TEST", "Chaser Q 공격!");
 
             // 범위 내 Runner 빙결
             for (Player p : players.values()) {
-                if (p.getRole() == PlayerRole.RUNNER && !p.isFrozen()) {
-                    if (myPlayer.distanceTo(p) <= FREEZE_RANGE) {
-                        Net.get().sendFreeze(p.getPlayerId());
+                if (p.getRole() == PlayerRole.RUNNER) {
+                    float dist = myPlayer.distanceTo(p);
+                    Gdx.app.log("TEST", "Runner " + p.getPlayerId() + " 거리: " + dist + ", 얼음: " + p.isFrozen());
+                    
+                    if (!p.isFrozen() && dist <= FREEZE_RANGE) {
+                        // ★ 테스트 모드: 직접 얼리기
+                        if (localTestMode) {
+                            p.startFreeze();
+                            Gdx.app.log("TEST", "★ Chaser가 " + p.getPlayerId() + " 얼림!");
+                        } else {
+                            Net.get().sendFreeze(p.getPlayerId());
+                        }
                     }
                 }
             }
@@ -522,40 +790,79 @@ public class GameScreen implements Screen {
         float w = img.getWidth(), h = img.getHeight();
         float px = w * HERO_PAD, py = h * HERO_PAD;
         float hbW = w - 2f * px, hbH = h - 2f * py;
+        
+        float origX = img.getX();
+        float origY = img.getY();
 
-        // X축 이동
-        float nx = img.getX() + vx;
-        Rectangle hb = new Rectangle(nx + px, img.getY() + py, hbW, hbH);
-        Rectangle hit = collideWithObstacle(hb);
-        if (hit != null) {
-            nx = (vx > 0f) ? hit.x - (hbW + px) - EPS : hit.x + hit.width - px + EPS;
+        // ★ X축 이동 시도
+        float nx = origX + vx;
+        Rectangle hb = new Rectangle(nx + px, origY + py, hbW, hbH);
+        
+        // X축 충돌 시 → X 이동만 취소
+        if (collideWithObstacle(hb) != null || collideWithPlayer(player, hb) != null) {
+            nx = origX;
         }
-
+        
+        // 맵 경계 체크 (X)
         float left = playArea.x - px;
         float right = playArea.x + playArea.width - (w - px);
         nx = MathUtils.clamp(nx, left, right);
-        img.setX(nx);
 
-        // Y축 이동
-        float ny = img.getY() + vy;
-        hb = new Rectangle(img.getX() + px, ny + py, hbW, hbH);
-        hit = collideWithObstacle(hb);
-        if (hit != null) {
-            ny = (vy > 0f) ? hit.y - (hbH + py) - EPS : hit.y + hit.height - py + EPS;
+        // ★ Y축 이동 시도
+        float ny = origY + vy;
+        hb = new Rectangle(nx + px, ny + py, hbW, hbH);
+        
+        // Y축 충돌 시 → Y 이동만 취소
+        if (collideWithObstacle(hb) != null || collideWithPlayer(player, hb) != null) {
+            ny = origY;
         }
-
+        
+        // 맵 경계 체크 (Y)
         float bottom = playArea.y - py;
         float top = playArea.y + playArea.height - (h - py);
         ny = MathUtils.clamp(ny, bottom, top);
+        
+        // 위치 적용
+        img.setX(nx);
         img.setY(ny);
-
-        player.setPosition(img.getX(), img.getY());
-        player.move(dx, dy, delta);
+        player.setPosition(nx, ny);
+        
+        // ★ 방향 설정 (애니메이션용)
+        if (nx != origX || ny != origY) {
+            player.updateDirection(dx, dy);  // 이동 중
+        } else {
+            player.stopMoving();  // 완전히 막힘
+        }
     }
 
     private Rectangle collideWithObstacle(Rectangle hb) {
         for (Rectangle r : hoopLRects) if (hb.overlaps(r)) return r;
         for (Rectangle r : hoopRRects) if (hb.overlaps(r)) return r;
+        return null;
+    }
+    
+    // ★ 다른 플레이어와 충돌 체크
+    private Rectangle collideWithPlayer(Player me, Rectangle hb) {
+        for (Player p : players.values()) {
+            if (p == me) continue;  // 자기 자신 제외
+            
+            // 플레이어 히트박스 계산
+            Image img = p.getImage();
+            if (img == null) continue;
+            
+            float pw = img.getWidth(), ph = img.getHeight();
+            float ppx = pw * HERO_PAD, ppy = ph * HERO_PAD;
+            Rectangle playerRect = new Rectangle(
+                img.getX() + ppx, 
+                img.getY() + ppy, 
+                pw - 2f * ppx, 
+                ph - 2f * ppy
+            );
+            
+            if (hb.overlaps(playerRect)) {
+                return playerRect;
+            }
+        }
         return null;
     }
 
@@ -613,6 +920,9 @@ public class GameScreen implements Screen {
         // 그리기
         stage.act(delta);
         stage.draw();
+        
+        // ★ 닉네임 및 공격 게이지 렌더링 (월드 좌표)
+        renderPlayerOverlays();
 
         // 스킬 UI 렌더링 (화면 고정 - HUD)
         if (myPlayer != null && myPlayer.getRole() == PlayerRole.RUNNER) {
@@ -648,6 +958,60 @@ public class GameScreen implements Screen {
             centerCameraOnPlayer(myPlayer);
         }
     }
+    
+    // ========== 닉네임 및 공격 게이지 렌더링 ==========
+    private void renderPlayerOverlays() {
+        // 월드 좌표로 카메라 설정
+        app.batch.setProjectionMatrix(stage.getCamera().combined);
+        app.batch.begin();
+        
+        for (Player p : players.values()) {
+            Image img = p.getImage();
+            if (img == null) continue;
+            
+            float centerX = img.getX() + img.getWidth() / 2f;
+            float topY = img.getY() + img.getHeight();
+            
+            // ★ 닉네임 표시 (캐릭터 머리 위)
+            String nickname = p.getNickname();
+            com.badlogic.gdx.graphics.g2d.GlyphLayout layout = new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, nickname);
+            float textX = centerX - layout.width / 2f;
+            float textY = topY + 25f + layout.height;
+            
+            // 닉네임 배경 (가독성용)
+            font.setColor(com.badlogic.gdx.graphics.Color.BLACK);
+            font.draw(app.batch, nickname, textX + 1, textY - 1);
+            font.setColor(com.badlogic.gdx.graphics.Color.WHITE);
+            font.draw(app.batch, nickname, textX, textY);
+        }
+        
+        // ★ 해빙 게이지 (해빙 중인 타겟 머리 위에 표시)
+        for (Player p : players.values()) {
+            if (p.isUnfreezingTarget()) {
+                Player target = p.getUnfreezeTarget();
+                if (target != null && target.getImage() != null) {
+                    Image targetImg = target.getImage();
+                    float targetCenterX = targetImg.getX() + targetImg.getWidth() / 2f;
+                    float targetTopY = targetImg.getY() + targetImg.getHeight();
+                    
+                    float progress = p.getUnfreezeProgress();
+                    float gageW = 60f;
+                    float gageH = 10f;
+                    float gageX = targetCenterX - gageW / 2f;
+                    float gageY = targetTopY + 5f;
+                    
+                    // 배경 게이지 (gage1)
+                    app.batch.draw(texGage1, gageX, gageY, gageW, gageH);
+                    
+                    // 진행 게이지 (gage2)
+                    float fillW = gageW * progress;
+                    app.batch.draw(texGage2, gageX, gageY, fillW, gageH);
+                }
+            }
+        }
+        
+        app.batch.end();
+    }
 
     @Override
     public void pause() {
@@ -673,6 +1037,7 @@ public class GameScreen implements Screen {
 
         for (Texture t : texRight) t.dispose();
         for (Texture t : texLeft) t.dispose();
+        texChaserIdle.dispose();  // ★ Chaser idle
         for (Texture t : texChaserLeft) t.dispose();
         for (Texture t : texChaserRight) t.dispose();
         for (Texture t : texChaserAttackL) t.dispose();
@@ -704,5 +1069,6 @@ public class GameScreen implements Screen {
 
         if (skillUI != null) skillUI.dispose();
         if (sr != null) sr.dispose();
+        if (font != null) font.dispose();  // ★ 폰트 해제
     }
 }
