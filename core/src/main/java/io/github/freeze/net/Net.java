@@ -264,7 +264,7 @@ public final class Net {
                 case "playerJoined": {
                     String roomId = jo.has("roomId") ? jo.get("roomId").getAsString() : "";
                     
-                    // ★ snapshot에서 새로 입장한 플레이어 정보 추출
+                    // ★ snapshot에서 플레이어 정보 추출
                     if (jo.has("snapshot")) {
                         JsonObject snapshot = jo.getAsJsonObject("snapshot");
                         
@@ -280,6 +280,9 @@ public final class Net {
                     }
                     
                     Gdx.app.log("WS", "Player joined room: " + roomId);
+                    
+                    // ★ 입장 성공 콜백 (LobbyScreen으로 이동)
+                    if (listener != null) listener.onJoinOk(roomId);
                     break;
                 }
                 
