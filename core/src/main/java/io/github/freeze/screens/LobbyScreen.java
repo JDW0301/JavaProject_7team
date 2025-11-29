@@ -73,6 +73,9 @@ public class LobbyScreen implements Screen {
     // 월드
     private Group world;
     
+    // ★ 닉네임 표시용 폰트
+    private com.badlogic.gdx.graphics.g2d.BitmapFont font;
+    
     // 이동 전송 타이머
     private float moveSendTimer = 0f;
     private static final float MOVE_SEND_INTERVAL = 0.05f;  // 50ms마다 전송
@@ -81,11 +84,16 @@ public class LobbyScreen implements Screen {
     private java.util.Map<String, float[]> initialPlayerPositions;
 
     public LobbyScreen(Core app, String roomId) {
-        this(app, roomId, (java.util.Map<String, float[]>) null);
+        this(app, roomId, null, null);
     }
     
-    // ★ 플레이어 위치를 받는 생성자
+    // ★ 플레이어 위치를 받는 생성자 (하위 호환)
     public LobbyScreen(Core app, String roomId, java.util.Map<String, float[]> playerPositions) {
+        this(app, roomId, playerPositions, null);
+    }
+    
+    // ★ 플레이어 위치 + 내 닉네임을 받는 생성자
+    public LobbyScreen(Core app, String roomId, java.util.Map<String, float[]> playerPositions, String myNickname) {
         this.app = app;
         this.roomId = roomId;
         this.initialPlayerPositions = playerPositions;
@@ -100,13 +108,16 @@ public class LobbyScreen implements Screen {
 
         // ★ 서버에서 받은 플레이어들 생성 (위치 포함)
         if (initialPlayerPositions != null && !initialPlayerPositions.isEmpty()) {
-            // ★ myPlayerId 설정 (Preferences에서 닉네임 가져오기)
-            Preferences pref = Gdx.app.getPreferences("settings");
-            String nick = pref.getString("nickname", "");
-            if (nick.isEmpty()) {
-                nick = "Player" + (int)(Math.random() * 10000);
+            // ★ myPlayerId 설정 (직접 전달받은 값 사용!)
+            if (myNickname != null && !myNickname.isEmpty()) {
+                myPlayerId = myNickname;
+            } else {
+                // fallback: Preferences에서 가져오기
+                Preferences pref = Gdx.app.getPreferences("settings");
+                myPlayerId = pref.getString("nickname", "Unknown");
             }
-            myPlayerId = nick;
+            
+            Gdx.app.log("LOBBY", "★ myPlayerId 설정됨: " + myPlayerId);
             
             // ★ 첫 번째 플레이어가 방장 (방 생성자)
             String firstPlayer = initialPlayerPositions.keySet().iterator().next();
@@ -122,6 +133,9 @@ public class LobbyScreen implements Screen {
             Player me = this.players.get(myPlayerId);
             if (me != null && me.getImage() != null) {
                 me.getImage().toFront();
+                Gdx.app.log("LOBBY", "★ 내 캐릭터 찾음: " + myPlayerId);
+            } else {
+                Gdx.app.error("LOBBY", "★ 내 캐릭터 못 찾음! myPlayerId=" + myPlayerId + ", players=" + players.keySet());
             }
             
             // ★ Start 버튼 가시성
@@ -159,6 +173,10 @@ public class LobbyScreen implements Screen {
             texRight[i] = load("images/Right_C" + (i + 1) + ".png");
             texLeft[i] = load("images/Left_C" + (i + 1) + ".png");
         }
+        
+        // ★ 닉네임 표시용 폰트
+        font = new com.badlogic.gdx.graphics.g2d.BitmapFont();
+        font.setColor(Color.WHITE);
     }
 
     // ========== 월드 설정 ==========
@@ -233,10 +251,11 @@ public class LobbyScreen implements Screen {
     private void setupNetworkListener() {
         Net.get().setListener(new Net.Listener() {
             @Override
-            public void onPlayerMove(String playerId, float x, float y) {
+            public void onPlayerMove(String playerId, float dx, float dy, float x, float y) {
                 Player p = players.get(playerId);
                 if (p != null && !playerId.equals(myPlayerId)) {
-                    p.setPosition(x, y);
+                    // ★ 다른 플레이어 이동 처리 (애니메이션 포함)
+                    p.moveOther(dx, dy, x, y);
                 }
             }
 
@@ -277,8 +296,8 @@ public class LobbyScreen implements Screen {
                     Gdx.app.error("LOBBY", "파싱 실패: " + e.getMessage());
                 }
                 
-                // ★ GameScreen으로 이동 (역할 + 위치 전달)
-                app.setScreen(new GameScreen(app, roles, positions));
+                // ★ GameScreen으로 이동 (역할 + 위치 + 내 ID 전달)
+                app.setScreen(new GameScreen(app, roles, positions, myPlayerId));
             }
 
             @Override
@@ -329,6 +348,8 @@ public class LobbyScreen implements Screen {
         String nick = pref.getString("nickname", "");
         if (nick.isEmpty()) {
             nick = "Player" + (int)(Math.random() * 10000);
+            pref.putString("nickname", nick);  // ★ 저장!
+            pref.flush();
         }
         
         myPlayerId = nick;  // 닉네임을 playerId로 사용
@@ -393,6 +414,12 @@ public class LobbyScreen implements Screen {
         players.put(playerId, player);
         readyStatus.put(playerId, false);  // ★ Ready 초기화
         
+        // ★ 내 캐릭터면 초기 위치 서버에 전송!
+        if (playerId.equals(myPlayerId)) {
+            Net.get().sendPlayerMove(myPlayerId, 0, 0, posX, posY);
+            Gdx.app.log("LOBBY", "내 초기 위치 전송: (" + posX + ", " + posY + ")");
+        }
+        
         Gdx.app.log("LOBBY", "Player added: " + playerId + " at (" + posX + ", " + posY + ") (total: " + players.size() + ")");
     }
 
@@ -419,11 +446,15 @@ public class LobbyScreen implements Screen {
                 moveSendTimer = 0f;
             }
         } else {
+            // ★ 멈출 때도 서버에 전송 (다른 클라이언트가 멈춤 인식)
+            if (me.isMoving()) {
+                float px = me.getImage().getX();
+                float py = me.getImage().getY();
+                Net.get().sendPlayerMove(myPlayerId, 0, 0, px, py);
+            }
             me.stopMoving();
             moveSendTimer = 0f;
         }
-        
-        me.update(delta);
     }
 
     private void movePlayer(Player player, float dx, float dy, float delta) {
@@ -457,11 +488,10 @@ public class LobbyScreen implements Screen {
             boolean newReady = !currentReady;
             readyStatus.put(myPlayerId, newReady);
             
-            Gdx.app.log("LOBBY", "Ready: " + newReady);
+            Gdx.app.log("LOBBY", "Ready: " + newReady + " (myPlayerId: " + myPlayerId + ")");
             
-            // ★ 서버가 Ready 미지원 (UNKNOWN_TYPE 에러)
-            // 로컬에서만 관리
-            // Net.get().sendReady(myPlayerId, newReady);
+            // ★ 서버에 Ready 전송
+            Net.get().sendReady(myPlayerId, newReady);
             
             updatePlayerCount();
         }
@@ -570,9 +600,37 @@ public class LobbyScreen implements Screen {
         stage.getViewport().apply(true);
 
         handleInput(delta);
+        
+        // ★ 모든 플레이어 update (애니메이션 재생)
+        for (Player p : players.values()) {
+            p.update(delta);
+        }
 
         stage.act(delta);
         stage.draw();
+        
+        // ★ 닉네임 표시 (stage.draw() 후에 별도 batch로)
+        app.batch.setProjectionMatrix(stage.getCamera().combined);
+        app.batch.begin();
+        for (Player p : players.values()) {
+            Image img = p.getImage();
+            if (img == null) continue;
+            
+            float centerX = img.getX() + img.getWidth() / 2f;
+            float topY = img.getY() + img.getHeight();
+            
+            String nickname = p.getPlayerId();  // playerId를 닉네임으로 사용
+            com.badlogic.gdx.graphics.g2d.GlyphLayout layout = new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, nickname);
+            float textX = centerX - layout.width / 2f;
+            float textY = topY + 20f + layout.height;
+            
+            // 닉네임 배경 (가독성용)
+            font.setColor(Color.BLACK);
+            font.draw(app.batch, nickname, textX + 1, textY - 1);
+            font.setColor(Color.WHITE);
+            font.draw(app.batch, nickname, textX, textY);
+        }
+        app.batch.end();
     }
 
     @Override
@@ -611,5 +669,6 @@ public class LobbyScreen implements Screen {
         texIdle.dispose();
         for (Texture t : texRight) t.dispose();
         for (Texture t : texLeft) t.dispose();
+        if (font != null) font.dispose();  // ★ 폰트 해제
     }
 }

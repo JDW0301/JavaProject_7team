@@ -23,13 +23,13 @@ public final class Net {
         
         // 게임 관련
         default void onGameStart(String roleJson) {}
-        default void onPlayerMove(String playerId, float x, float y) {}
+        default void onPlayerMove(String playerId, float dx, float dy, float x, float y) {}  // ★ dx, dy 추가
         default void onPlayerFreeze(String targetId, String attackerId) {}
         default void onPlayerUnfreeze(String targetId, String unfreezeId) {}
         default void onSkillUsed(String playerId, String skillType) {}
         default void onFogActivated(String playerId) {}
         default void onPlayerReady(String playerId, boolean isReady) {}
-        default void onPlayerJoined(String playerId, float x, float y) {}  // ★ 위치 포함!
+        default void onPlayerJoined(String playerId, float x, float y) {}
         default void onPlayerLeft(String playerId) {}
     }
 
@@ -318,10 +318,12 @@ public final class Net {
                 
                 case "playerMoved": {
                     String playerId = jo.has("playerId") ? jo.get("playerId").getAsString() : "";
+                    float dx = jo.has("dx") ? jo.get("dx").getAsFloat() : 0f;
+                    float dy = jo.has("dy") ? jo.get("dy").getAsFloat() : 0f;
                     float x = jo.has("x") ? jo.get("x").getAsFloat() : 0f;
                     float y = jo.has("y") ? jo.get("y").getAsFloat() : 0f;
                     
-                    if (listener != null) listener.onPlayerMove(playerId, x, y);
+                    if (listener != null) listener.onPlayerMove(playerId, dx, dy, x, y);
                     break;
                 }
                 

@@ -21,6 +21,9 @@ public class EnterRoomScreen implements Screen {
 
     private final Core app;
     private final Stage stage;
+    
+    // ★ 내 닉네임 저장
+    private String myNickname;
 
     // textures
     private Texture texBg, texBoard, texInput;
@@ -85,9 +88,15 @@ public class EnterRoomScreen implements Screen {
                 Preferences pref = Gdx.app.getPreferences("settings");
                 String nick = pref.getString("nickname", "");
                 if (nick.isEmpty()) {
-                    // 랜덤 닉네임 생성
+                    // 랜덤 닉네임 생성 + 저장!
                     nick = "Player" + (int)(Math.random() * 10000);
+                    pref.putString("nickname", nick);
+                    pref.flush();
+                    Gdx.app.log("ENTER", "랜덤 닉네임 생성 및 저장: " + nick);
                 }
+                
+                // ★ 필드에 저장 (LobbyScreen에 전달용)
+                myNickname = nick;
                 
                 // 입력 검증
                 if (code.isEmpty()) {
@@ -108,7 +117,7 @@ public class EnterRoomScreen implements Screen {
                 // 방 입장 요청
                 try {
                     Gdx.app.log("ENTER", "방 입장: code=" + code + ", nick=" + nick);
-                    Net.get().sendJoinRoom(code, nick);  // ★ roomId, playerId 형식
+                    Net.get().sendJoinRoom(code, nick);
                 } catch (Throwable t) {
                     Gdx.app.error("NET", "joinRoom send failed", t);
                 }
@@ -284,9 +293,9 @@ public class EnterRoomScreen implements Screen {
             
             @Override
             public void onJoinOk(String roomId) {
-                Gdx.app.log("ENTER", "방 입장 완료! roomId=" + roomId + ", players=" + playerPositions.keySet());
-                // ★ LobbyScreen으로 이동 (플레이어 위치 전달)
-                app.setScreen(new LobbyScreen(app, roomId, playerPositions));
+                Gdx.app.log("ENTER", "방 입장 완료! roomId=" + roomId + ", players=" + playerPositions.keySet() + ", myNick=" + myNickname);
+                // ★ LobbyScreen으로 이동 (플레이어 위치 + 내 닉네임 전달)
+                app.setScreen(new LobbyScreen(app, roomId, playerPositions, myNickname));
             }
 
             @Override

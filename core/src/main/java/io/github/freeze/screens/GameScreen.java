@@ -116,16 +116,21 @@ public class GameScreen implements Screen {
     private Map<String, float[]> serverPositions = new HashMap<>();  // ★ 위치 정보
 
     public GameScreen(Core app) {
-        this(app, null, null);  // 테스트 모드
+        this(app, null, null, null);  // 테스트 모드
     }
 
     // ★ 서버 연동용 생성자 (역할만)
     public GameScreen(Core app, Map<String, PlayerRole> roles) {
-        this(app, roles, null);
+        this(app, roles, null, null);
     }
     
     // ★ 서버 연동용 생성자 (역할 + 위치)
     public GameScreen(Core app, Map<String, PlayerRole> roles, Map<String, float[]> positions) {
+        this(app, roles, positions, null);
+    }
+    
+    // ★ 서버 연동용 생성자 (역할 + 위치 + 내 ID)
+    public GameScreen(Core app, Map<String, PlayerRole> roles, Map<String, float[]> positions, String myId) {
         this.app = app;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
@@ -142,6 +147,10 @@ public class GameScreen implements Screen {
             serverRoles = roles;
             if (positions != null) {
                 serverPositions = positions;
+            }
+            // ★ myPlayerId 먼저 설정!
+            if (myId != null && !myId.isEmpty()) {
+                myPlayerId = myId;
             }
             createPlayersFromServer(roles, serverPositions);
         } else {
@@ -352,10 +361,11 @@ public class GameScreen implements Screen {
             }
 
             @Override
-            public void onPlayerMove(String playerId, float x, float y) {
+            public void onPlayerMove(String playerId, float dx, float dy, float x, float y) {
                 Player p = players.get(playerId);
                 if (p != null && !playerId.equals(myPlayerId)) {
-                    p.setPosition(x, y);
+                    // ★ 다른 플레이어 이동 처리 (애니메이션 포함)
+                    p.moveOther(dx, dy, x, y);
                 }
             }
 
@@ -505,15 +515,21 @@ public class GameScreen implements Screen {
 
     // ========== 서버 모드: 역할 + 위치 정보로 플레이어 생성 ==========
     private void createPlayersFromServer(Map<String, PlayerRole> roles, Map<String, float[]> positions) {
-        // ★ Preferences에서 내 닉네임 가져오기
-        Preferences pref = Gdx.app.getPreferences("settings");
-        String myNick = pref.getString("nickname", "");
-        if (myNick.isEmpty()) {
-            myNick = "Player" + (int)(Math.random() * 10000);
+        // ★ myPlayerId가 아직 설정 안 됐으면 Preferences에서 가져오기
+        if (myPlayerId == null || myPlayerId.isEmpty()) {
+            Preferences pref = Gdx.app.getPreferences("settings");
+            String myNick = pref.getString("nickname", "");
+            if (myNick.isEmpty()) {
+                myNick = "Player" + (int)(Math.random() * 10000);
+                pref.putString("nickname", myNick);
+                pref.flush();
+            }
+            myPlayerId = myNick;
         }
-        myPlayerId = myNick;
 
-        Gdx.app.log("GAME", "서버 모드 - 플레이어 생성 시작 (내 ID: " + myPlayerId + ")");
+        Gdx.app.log("GAME", "★ 서버 모드 - 플레이어 생성 시작 (내 ID: " + myPlayerId + ")");
+        Gdx.app.log("GAME", "받은 역할: " + roles);
+        Gdx.app.log("GAME", "받은 위치: " + positions);
 
         for (Map.Entry<String, PlayerRole> entry : roles.entrySet()) {
             String playerId = entry.getKey();
@@ -527,7 +543,7 @@ public class GameScreen implements Screen {
 
             if (playerId.equals(myPlayerId)) {
                 myPlayer = player;
-                Gdx.app.log("GAME", "내 캐릭터 생성: " + playerId + " (" + role + ")");
+                Gdx.app.log("GAME", "★ 내 캐릭터 생성: " + playerId + " (" + role + ")");
             } else {
                 Gdx.app.log("GAME", "다른 플레이어 생성: " + playerId + " (" + role + ")");
             }
@@ -536,6 +552,8 @@ public class GameScreen implements Screen {
         if (myPlayer != null) {
             myPlayer.getImage().toFront();
             centerCameraOnPlayer(myPlayer);
+        } else {
+            Gdx.app.error("GAME", "★ 내 캐릭터를 찾을 수 없음! myPlayerId=" + myPlayerId + ", players=" + players.keySet());
         }
     }
 
@@ -688,7 +706,12 @@ public class GameScreen implements Screen {
                 }
             }
         } else {
-            // 이동 안 할 때 velocity 초기화 (애니메이션 멈춤)
+            // ★ 멈출 때도 서버에 전송 (다른 클라이언트가 멈춤 인식)
+            if (!localTestMode && myPlayer.isMoving()) {
+                float px = myPlayer.getImage().getX();
+                float py = myPlayer.getImage().getY();
+                Net.get().sendPlayerMove(myPlayerId, 0, 0, px, py);
+            }
             myPlayer.stopMoving();
         }
         

@@ -189,6 +189,29 @@ public class Player {
         velocity.set(0, 0);
     }
     
+    // ★ 다른 플레이어 이동 (서버에서 받은 데이터로 처리)
+    public void moveOther(float dx, float dy, float x, float y) {
+        // 위치 설정
+        position.set(x, y);
+        image.setPosition(x, y);
+        
+        // 방향 설정 (애니메이션용)
+        if (dx > 0) facingRight = true;
+        else if (dx < 0) facingRight = false;
+        
+        // 움직임 여부 설정
+        if (dx != 0 || dy != 0) {
+            velocity.set(dx, dy);  // 움직이는 중
+        } else {
+            velocity.set(0, 0);  // 멈춤
+        }
+    }
+    
+    // ★ 다른 플레이어가 움직이는 중인지
+    public boolean isMoving() {
+        return velocity.x != 0 || velocity.y != 0;
+    }
+    
     // ★ 방향만 설정 (이동 없이 애니메이션용)
     public void updateDirection(float dx, float dy) {
         if (dx > 0) facingRight = true;
