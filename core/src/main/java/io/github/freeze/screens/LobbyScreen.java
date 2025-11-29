@@ -76,10 +76,16 @@ public class LobbyScreen implements Screen {
     // 이동 전송 타이머
     private float moveSendTimer = 0f;
     private static final float MOVE_SEND_INTERVAL = 0.05f;  // 50ms마다 전송
+    
+    // ★ 초기 플레이어 위치
+    private Map<String, float[]> initialPositions;
 
-    public LobbyScreen(Core app, String roomId) {
+    // ★★★ 수정: 4개 파라미터 생성자 ★★★
+    public LobbyScreen(Core app, String roomId, Map<String, float[]> playerPositions, String myNickname) {
         this.app = app;
         this.roomId = roomId;
+        this.initialPositions = playerPositions;
+        this.myPlayerId = myNickname;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
         stage.getViewport().update(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight(), true);
@@ -89,7 +95,14 @@ public class LobbyScreen implements Screen {
         setupUI();
         setupNetworkListener();
 
-        // 테스트용: 로컬 플레이어 생성
+        // ★ 서버에서 받은 플레이어들로 생성
+        createPlayersFromServer();
+    }
+    
+    // ★ 기존 2개 파라미터 생성자 (테스트용)
+    public LobbyScreen(Core app, String roomId) {
+        this(app, roomId, new HashMap<>(), "TestPlayer");
+        // 테스트용 로컬 플레이어
         createTestPlayer();
     }
 
@@ -240,16 +253,16 @@ public class LobbyScreen implements Screen {
             }
 
             @Override
-            public void onPlayerJoined(String playerId) {
-                Gdx.app.log("LOBBY", "Player joined: " + playerId);
+            public void onPlayerJoined(String playerId, float x, float y) {
+                Gdx.app.log("LOBBY", "Player joined: " + playerId + " at (" + x + ", " + y + ")");
                 
                 // ★ 이미 있는 플레이어면 무시
                 if (players.containsKey(playerId)) {
                     return;
                 }
                 
-                // ★ 새 플레이어 생성
-                addPlayer(playerId);
+                // ★ 새 플레이어 생성 (위치 포함)
+                addPlayerAt(playerId, x, y);
                 updatePlayerCount();
             }
 
@@ -289,6 +302,11 @@ public class LobbyScreen implements Screen {
 
     // ★ 플레이어 추가 (자신 or 다른 플레이어)
     private void addPlayer(String playerId) {
+        addPlayerAt(playerId, -1, -1);  // -1이면 랜덤 위치
+    }
+    
+    // ★★★ 추가: 위치 지정 플레이어 추가 ★★★
+    private void addPlayerAt(String playerId, float x, float y) {
         // 이미 있으면 무시
         if (players.containsKey(playerId)) {
             return;
@@ -300,16 +318,23 @@ public class LobbyScreen implements Screen {
         float charScale = charH / texIdle.getHeight();
         playerImage.setSize(texIdle.getWidth() * charScale, texIdle.getHeight() * charScale);
 
-        // ★ 랜덤 위치에 배치 (겹치지 않게)
-        float randomX = floorArea.x + (float)(Math.random() * (floorArea.width - playerImage.getWidth()));
-        float randomY = floorArea.y + (float)(Math.random() * (floorArea.height - playerImage.getHeight()));
+        // ★ 위치 설정 (x < 0 이면 랜덤)
+        float posX, posY;
+        if (x < 0 || y < 0) {
+            posX = floorArea.x + (float)(Math.random() * (floorArea.width - playerImage.getWidth()));
+            posY = floorArea.y + (float)(Math.random() * (floorArea.height - playerImage.getHeight()));
+        } else {
+            posX = x;
+            posY = y;
+        }
         
-        playerImage.setPosition(randomX, randomY);
+        playerImage.setPosition(posX, posY);
         world.addActor(playerImage);
 
         // Player 객체 생성 (Runner로 설정)
         Player player = new Player(playerId, PlayerRole.RUNNER, playerImage);
         player.setPosition(playerImage.getX(), playerImage.getY());
+        player.setNickname(playerId);  // ★ 닉네임 설정
 
         // 애니메이션 설정
         Array<TextureRegion> rightFrames = new Array<>();
@@ -326,7 +351,32 @@ public class LobbyScreen implements Screen {
         players.put(playerId, player);
         readyStatus.put(playerId, false);  // ★ Ready 초기화
         
-        Gdx.app.log("LOBBY", "Player added: " + playerId + " (total: " + players.size() + ")");
+        Gdx.app.log("LOBBY", "Player added: " + playerId + " at (" + posX + ", " + posY + ") (total: " + players.size() + ")");
+    }
+    
+    // ★★★ 추가: 서버에서 받은 플레이어들 생성 ★★★
+    private void createPlayersFromServer() {
+        if (initialPositions == null || initialPositions.isEmpty()) {
+            Gdx.app.log("LOBBY", "No initial players from server");
+            return;
+        }
+        
+        for (Map.Entry<String, float[]> entry : initialPositions.entrySet()) {
+            String playerId = entry.getKey();
+            float[] pos = entry.getValue();
+            float x = pos.length > 0 ? pos[0] : 0;
+            float y = pos.length > 1 ? pos[1] : 0;
+            
+            addPlayerAt(playerId, x, y);
+            
+            // 내 캐릭터면 호스트 설정
+            if (playerId.equals(myPlayerId)) {
+                isHost = (initialPositions.size() == 1);  // 첫 번째 플레이어면 방장
+            }
+        }
+        
+        btnStart.setVisible(isHost);
+        updatePlayerCount();
     }
 
     // ========== 입력 처리 ==========

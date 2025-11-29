@@ -30,7 +30,7 @@ public final class Net {
         default void onSkillUsed(String playerId, String skillType) {}
         default void onFogActivated(String playerId) {}
         default void onPlayerReady(String playerId, boolean isReady) {}
-        default void onPlayerJoined(String playerId) {}
+        default void onPlayerJoined(String playerId, float x, float y) {}  // ★ x, y 추가
         default void onPlayerLeft(String playerId) {}
     }
 
@@ -113,12 +113,13 @@ public final class Net {
 
     // ====== API (서버 문서 포맷에 맞춤) ======
     
-    // 방 생성
-    public void sendCreateRoom(String code, String title, String password) {
+    // 방 생성 (★ playerId 추가)
+    public void sendCreateRoom(String code, String title, String password, String playerId) {
         Map<String,Object> payload = new HashMap<>();
         payload.put("code", code);
         payload.put("title", title);
         payload.put("password", password);
+        payload.put("playerId", playerId);  // ★ 생성자 ID
 
         Map<String,Object> msg = new HashMap<>();
         msg.put("type", "createRoom");
@@ -268,11 +269,25 @@ public final class Net {
                     if (jo.has("snapshot")) {
                         JsonObject snapshot = jo.getAsJsonObject("snapshot");
                         
+                        // ★ players 배열 파싱 (객체 배열: {id, x, y})
                         if (snapshot.has("players")) {
                             JsonArray playersArray = snapshot.getAsJsonArray("players");
                             for (int i = 0; i < playersArray.size(); i++) {
-                                String playerId = playersArray.get(i).getAsString();
-                                if (listener != null) listener.onPlayerJoined(playerId);
+                                JsonElement elem = playersArray.get(i);
+                                
+                                // 객체인 경우 (서버에서 {id, x, y} 형태로 전송)
+                                if (elem.isJsonObject()) {
+                                    JsonObject playerObj = elem.getAsJsonObject();
+                                    String playerId = playerObj.has("id") ? playerObj.get("id").getAsString() : "";
+                                    float x = playerObj.has("x") ? playerObj.get("x").getAsFloat() : 0f;
+                                    float y = playerObj.has("y") ? playerObj.get("y").getAsFloat() : 0f;
+                                    if (listener != null) listener.onPlayerJoined(playerId, x, y);
+                                } 
+                                // 문자열인 경우 (이전 버전 호환)
+                                else if (elem.isJsonPrimitive()) {
+                                    String playerId = elem.getAsString();
+                                    if (listener != null) listener.onPlayerJoined(playerId, 0f, 0f);
+                                }
                             }
                         }
                     }
