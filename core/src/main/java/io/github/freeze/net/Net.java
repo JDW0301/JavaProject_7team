@@ -290,6 +290,15 @@ public final class Net {
                                 }
                             }
                         }
+                        
+                        // ★ ready_status 파싱 추가
+                        if (snapshot.has("ready_status")) {
+                            JsonObject readyObj = snapshot.getAsJsonObject("ready_status");
+                            for (String pid : readyObj.keySet()) {
+                                boolean isReady = readyObj.get(pid).getAsBoolean();
+                                if (listener != null) listener.onPlayerReady(pid, isReady);
+                            }
+                        }
                     }
                     
                     Gdx.app.log("WS", "Player joined room: " + roomId);

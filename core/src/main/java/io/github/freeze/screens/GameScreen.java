@@ -934,6 +934,9 @@ public class GameScreen implements Screen {
     // ========== Screen 메서드 ==========
     @Override
     public void show() {
+        // ★ 화면 활성화 시 리스너 재설정
+        setupNetworkListener();
+        Gdx.app.log("GAME", "Screen shown, listener reset!");
     }
 
     @Override

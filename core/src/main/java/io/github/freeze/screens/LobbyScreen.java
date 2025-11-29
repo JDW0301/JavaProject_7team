@@ -543,6 +543,9 @@ public class LobbyScreen implements Screen {
     // ========== Screen 메서드 ==========
     @Override
     public void show() {
+        // ★ 화면 활성화 시 리스너 재설정 (hide()에서 null로 설정되기 때문)
+        setupNetworkListener();
+        Gdx.app.log("LOBBY", "Screen shown, listener reset!");
     }
 
     @Override
