@@ -102,8 +102,12 @@ public class FirstScreen implements Screen {
         mux.addProcessor(stage);
         mux.addProcessor(new InputAdapter() {
             @Override public boolean keyDown(int keycode) {
-                if (keycode == Input.Keys.F5) { // F5 누르면 맵 화면
+                if (keycode == Input.Keys.F5) { // F5 누르면 게임 화면
                     app.setScreen(new GameScreen(app));
+                    return true;
+                }
+                if (keycode == Input.Keys.F6) { // F6 누르면 대기방  ← 이 4줄 추가!
+                    app.setScreen(new LobbyScreen(app, "test-room"));
                     return true;
                 }
                 return false;

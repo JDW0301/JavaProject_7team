@@ -15,6 +15,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import io.github.freeze.Core;
+import io.github.freeze.net.Net;
 
 public class EnterRoomScreen implements Screen {
 
@@ -22,7 +23,7 @@ public class EnterRoomScreen implements Screen {
     private final Stage stage;
 
     // textures
-    private Texture texBg, texBoard, texInput;     // bg_school.png, roomin.png, roomage_W.png
+    private Texture texBg, texBoard, texInput;
     private Texture texCancelUp, texCancelOver, texCheckUp, texCheckOver;
     private Texture texDim, texWhite;
 
@@ -47,8 +48,8 @@ public class EnterRoomScreen implements Screen {
 
         // load textures
         texBg         = load("images/bg_school.png");
-        texBoard      = load("images/roomin.png");        // ★ 방 들어가기 보드
-        texInput      = load("images/roomade_W.png");     // 흰 테두리 입력 프레임
+        texBoard      = load("images/roomin.png");
+        texInput      = load("images/roomade_W.png");
         texCancelUp   = load("images/cancel.png");
         texCancelOver = load("images/cancel_O.png");
         texCheckUp    = load("images/check.png");
@@ -68,17 +69,52 @@ public class EnterRoomScreen implements Screen {
         // buttons (hover)
         btnCancel = makeHoverImageButton(texCancelUp, texCancelOver);
         btnCheck  = makeHoverImageButton(texCheckUp,  texCheckOver);
+        
         btnCancel.addListener(new ClickListener(){
             @Override public void clicked(InputEvent event, float x, float y) {
                 app.setScreen(new FirstScreen(app));
             }
         });
+        
         btnCheck.addListener(new ClickListener(){
             @Override public void clicked(InputEvent event, float x, float y) {
-                Gdx.app.log("ENTER", "code="+tfCode.getText()+", pw="+tfPassword.getText());
-                // TODO: 서버 검증/입장 로직
+                String code = tfCode.getText().trim();
+                String pass = tfPassword.getText();
+                
+                // ★ Preferences에서 닉네임 가져오기
+                Preferences pref = Gdx.app.getPreferences("settings");
+                String nick = pref.getString("nickname", "");
+                if (nick.isEmpty()) {
+                    // 랜덤 닉네임 생성
+                    nick = "Player" + (int)(Math.random() * 10000);
+                }
+                
+                // 입력 검증
+                if (code.isEmpty()) {
+                    Gdx.app.log("ENTER", "방 코드를 입력하세요!");
+                    return;
+                }
+                
+                // 필요 시 즉시 연결 시도
+                if (!Net.get().isOpen()) {
+                    try { 
+                        Net.get().connect("ws://203.234.62.47:8080/ws"); 
+                    } catch (Exception ex) { 
+                        Gdx.app.error("NET", "connect fail", ex); 
+                        return;
+                    }
+                }
+                
+                // 방 입장 요청
+                try {
+                    Gdx.app.log("ENTER", "방 입장: code=" + code + ", nick=" + nick);
+                    Net.get().sendJoinRoom(code, nick);  // ★ roomId, playerId 형식
+                } catch (Throwable t) {
+                    Gdx.app.error("NET", "joinRoom send failed", t);
+                }
             }
         });
+        
         stage.addActor(btnCancel);
         stage.addActor(btnCheck);
 
@@ -97,10 +133,13 @@ public class EnterRoomScreen implements Screen {
         tfs.selection = new TextureRegionDrawable(new TextureRegion(texWhite)).tint(new Color(1,1,1,0.25f));
         tfs.background = null;
 
-        tfCode = new TextField("", tfs);       tfCode.setMessageText("방 코드");
-        tfPassword = new TextField("", tfs);   tfPassword.setMessageText("비밀번호(선택)");
-        tfPassword.setPasswordMode(true);      tfPassword.setPasswordCharacter('*');
-
+        tfCode = new TextField("", tfs);       
+        tfCode.setMessageText("방 코드");
+        
+        tfPassword = new TextField("", tfs);   
+        tfPassword.setMessageText("비밀번호(선택)");
+        tfPassword.setPasswordMode(true);      
+        tfPassword.setPasswordCharacter('*');
 
         inputCode = makeInputStack(tfCode);
         inputPw   = makeInputStack(tfPassword);
@@ -110,7 +149,6 @@ public class EnterRoomScreen implements Screen {
         stage.setKeyboardFocus(tfCode);
 
         layoutActors();
-
     }
 
     // ---------- layout ----------
@@ -119,7 +157,7 @@ public class EnterRoomScreen implements Screen {
         float vh = stage.getViewport().getWorldHeight();
 
         // board
-        final float BOARD_W = 1.0f;          // 화면폭 대비
+        final float BOARD_W = 1.0f;
         float targetBoardW = vw * BOARD_W;
         float sBoard = targetBoardW / ((TextureRegionDrawable)board.getDrawable()).getMinWidth();
         float bw = ((TextureRegionDrawable)board.getDrawable()).getMinWidth()  * sBoard;
@@ -132,12 +170,12 @@ public class EnterRoomScreen implements Screen {
         positionButton(btnCheck,  btnW, board.getX() + bw*0.42f, board.getY() + bh*0.28f);
         positionButton(btnCancel, btnW, board.getX() + bw*0.58f, board.getY() + bh*0.28f);
 
-        // inputs — 방코드 / 비밀번호
+        // inputs – 방코드 / 비밀번호
         final float INPUT_W_P = 0.245f;
         final float INPUT_H_P = 0.080f;
         final float COL_X_P   = 0.62f;
-        final float TOP_Y_P   = 0.536f;     // code
-        final float GAP_Y_P   = 0.128f;    // pw 아래로
+        final float TOP_Y_P   = 0.536f;
+        final float GAP_Y_P   = 0.128f;
 
         float inputW = bw * INPUT_W_P;
         float inputH = bh * INPUT_H_P;
@@ -165,12 +203,14 @@ public class EnterRoomScreen implements Screen {
         t.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         return t;
     }
+    
     private Texture makePixel(Color c){
         Pixmap p = new Pixmap(1,1, Pixmap.Format.RGBA8888);
         p.setColor(c); p.fill();
         Texture t = new Texture(p); p.dispose();
         return t;
     }
+    
     private ImageButton makeHoverImageButton(Texture up, Texture over){
         TextureRegionDrawable upD = new TextureRegionDrawable(new TextureRegion(up));
         TextureRegionDrawable ovD = new TextureRegionDrawable(new TextureRegion(over));
@@ -178,6 +218,7 @@ public class EnterRoomScreen implements Screen {
         st.imageUp = upD; st.imageOver = ovD; st.imageDown = upD.tint(new Color(0.6f,0.6f,0.6f,1));
         return new ImageButton(st);
     }
+    
     private void positionButton(ImageButton b, float targetW, float cx, float cy){
         TextureRegionDrawable up = (TextureRegionDrawable)b.getStyle().imageUp;
         float s = targetW / up.getMinWidth();
@@ -186,23 +227,26 @@ public class EnterRoomScreen implements Screen {
         b.setSize(w,h);
         b.setPosition(cx, cy, Align.center);
     }
+    
     private Stack makeInputStack(TextField tf){
         Image frame = new Image(new TextureRegionDrawable(new TextureRegion(texInput)));
         Container<TextField> box = new Container<>(tf);
-        box.fill(); // Stack 전체를 채우되, pad로 내부 여백 조절
+        box.fill();
         Stack st = new Stack();
         st.add(frame);
         st.add(box);
         return st;
     }
+    
     private void setStackSize(Stack st, float w, float h){
         st.setSize(w,h);
         ((Image)st.getChildren().get(0)).setSize(w,h);
     }
+    
     private void applyInsets(Stack st, float frameW, float frameH, float insetXP, float insetYP){
         Container<?> box = (Container<?>) st.getChildren().get(1);
         float padX = frameW*insetXP, padY = frameH*insetYP;
-        box.pad(padY, padX, padY, padX);  // top, left, bottom, right
+        box.pad(padY, padX, padY, padX);
         box.invalidate();
     }
 
@@ -224,15 +268,23 @@ public class EnterRoomScreen implements Screen {
     }
 
     // ---------- Screen ----------
-    @Override public void show() {
-//        Net.get().setListener(new Net.Listener() {
-//            @Override public void onJoinOk(String roomId) {
-//                app.setScreen(new LobbyScreen(app, roomId));   // 대기실로 이동
-//            }
-//            @Override public void onServerError(String code, String message) {
-//                statusLabel.setText("오류: " + code + " / " + message); // 화면의 라벨에 표시
-//            }
-//        });
+    @Override 
+    public void show() {
+        // ★ 네트워크 리스너 설정
+        Net.get().setListener(new Net.Listener() {
+            @Override
+            public void onJoinOk(String roomId) {
+                Gdx.app.log("ENTER", "방 입장 완료! roomId=" + roomId);
+                // LobbyScreen으로 이동
+                app.setScreen(new LobbyScreen(app, roomId));
+            }
+
+            @Override
+            public void onServerError(String code, String message) {
+                Gdx.app.error("ENTER", "서버 에러: " + code + " - " + message);
+                // TODO: 에러 메시지 표시
+            }
+        });
     }
 
     @Override
@@ -255,8 +307,10 @@ public class EnterRoomScreen implements Screen {
 
     @Override public void pause() {}
     @Override public void resume() {}
-    @Override public void hide() {
-        //Net.get().setListener(null);
+    @Override 
+    public void hide() {
+        // 리스너 해제
+        Net.get().setListener(null);
     }
 
     @Override

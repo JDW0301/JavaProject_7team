@@ -1,7 +1,6 @@
 package io.github.freeze.screens;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.*;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -59,7 +58,7 @@ public class CreateRoomScreen implements Screen {
         // ---- Load textures ----
         texBg         = load("images/bg_school.png");
         texBoard      = load("images/roomade.png");
-        texInput      = load("images/roomade_W.png"); // 입력 프레임 (파일명이 다르면 이 줄만 수정)
+        texInput      = load("images/roomade_W.png"); // 입력 프레임
         texCancelUp   = load("images/cancel.png");
         texCancelOver = load("images/cancel_O.png");
         texCheckUp    = load("images/check.png");
@@ -86,44 +85,49 @@ public class CreateRoomScreen implements Screen {
                 app.setScreen(new FirstScreen(app)); // 뒤로
             }
         });
-//        btnCheck.addListener(new ClickListener() {
-//            @Override public void clicked(InputEvent event, float x, float y) {
-//                Gdx.app.log("JOIN", "확인 클릭: title=" + tfTitle.getText()
-//                    + ", code=" + tfCode.getText()
-//                    + ", pw=" + tfPassword.getText());
-//                // TODO: 검증 및 다음 단계
-//            }
-//        });
+
         btnCheck.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) {
                 String title = tfTitle.getText().trim();
                 String code  = tfCode.getText().trim();
                 String pass  = tfPassword.getText();
-                String nick  = ""; // 닉네임 소스
+                
+                // ★ Preferences에서 닉네임 가져오기
+                Preferences pref = Gdx.app.getPreferences("settings");
+                String nick = pref.getString("nickname", "");
+                if (nick.isEmpty()) {
+                    // 랜덤 닉네임 생성
+                    nick = "Player" + (int)(Math.random() * 10000);
+                }
+
+                // 입력 검증
+                if (code.isEmpty() || title.isEmpty()) {
+                    Gdx.app.log("CREATE", "방 코드와 제목을 입력하세요!");
+                    return;
+                }
 
                 // 결과 초기화
                 Net.get().resetLastResult();
 
-                // 필요 시 즉시 연결 시도(앱 시작 시 연결 실패했던 경우 대비)
+                // 필요 시 즉시 연결 시도
                 if (!Net.get().isOpen()) {
-                    try { Net.get().connect("ws://203:234:62:47:8080/ws"); }
-                    catch (Exception ex) { Gdx.app.error("NET", "connect fail", ex); }
+                    try { 
+                        Net.get().connect("ws://203.234.62.47:8080/ws"); 
+                    } catch (Exception ex) { 
+                        Gdx.app.error("NET", "connect fail", ex); 
+                        return;
+                    }
                 }
 
-                // 전송 실패해도 앱이 죽지 않도록 보호
+                // 방 생성 요청
                 try {
-                    Net.get().sendCreateRoom(title, code, pass, nick);
+                    Gdx.app.log("CREATE", "방 생성: code=" + code + ", title=" + title + ", nick=" + nick);
+                    Net.get().sendCreateRoom(code, title, pass);
                 } catch (Throwable t) {
                     Gdx.app.error("NET", "createRoom send failed", t);
                 }
-
-                // 요구 흐름: 즉시 메인으로 복귀
-                final Screen prev = app.getScreen();
-                app.setScreen(new FirstScreen(app));
-                if (prev != null) prev.dispose();
             }
         });
-
 
         stage.addActor(btnCancel);
         stage.addActor(btnCheck);
@@ -132,30 +136,26 @@ public class CreateRoomScreen implements Screen {
         FreeTypeFontGenerator gen = new FreeTypeFontGenerator(Gdx.files.internal("fonts/NotoSansKR-Regular.ttf"));
         FreeTypeFontGenerator.FreeTypeFontParameter par = new FreeTypeFontGenerator.FreeTypeFontParameter();
 
-        // 글자 크기(px). 보드 높이에 비례하게도 가능: Math.round(bh * 0.035f)
         par.size = 28;
 
-        // 한글 포함 문자 집합(완성형 + 호환자모)
+        // 한글 포함 문자 집합
         StringBuilder hangul = new StringBuilder();
-        for (char c = 0xAC00; c <= 0xD7A3; c++) hangul.append(c); // 완성형
-        for (char c = 0x3131; c <= 0x318E; c++) hangul.append(c); // 호환 자모
+        for (char c = 0xAC00; c <= 0xD7A3; c++) hangul.append(c);
+        for (char c = 0x3131; c <= 0x318E; c++) hangul.append(c);
         par.characters = FreeTypeFontGenerator.DEFAULT_CHARS + hangul;
 
-        // 픽셀 느낌 유지
         par.minFilter = Texture.TextureFilter.Nearest;
         par.magFilter = Texture.TextureFilter.Nearest;
 
         BitmapFont fontInput = gen.generateFont(par);
         gen.dispose();
 
-        // === TextField 스타일에 적용 ===
         TextField.TextFieldStyle tfs = new TextField.TextFieldStyle();
         tfs.font = fontInput;
         tfs.fontColor = Color.WHITE;
-        tfs.messageFont = fontInput;                 // placeholder도 같은 폰트
+        tfs.messageFont = fontInput;
         tfs.messageFontColor = new Color(1,1,1,0.45f);
 
-        // 커서/선택 (그대로 사용 가능)
         TextureRegionDrawable cursor = new TextureRegionDrawable(new TextureRegion(texWhite));
         cursor.setMinWidth(2);
         tfs.cursor = cursor;
@@ -183,7 +183,6 @@ public class CreateRoomScreen implements Screen {
 
         stage.setKeyboardFocus(tfTitle);
 
-        // 최초 배치
         layoutActors();
     }
 
@@ -219,24 +218,21 @@ public class CreateRoomScreen implements Screen {
     private Stack makeInputStack(TextField tf) {
         Image frame = new Image(new TextureRegionDrawable(new TextureRegion(texInput)));
 
-        // ★ 텍스트필드를 컨테이너로 감싸 padding 적용 가능하게
         com.badlogic.gdx.scenes.scene2d.ui.Container<TextField> box =
             new com.badlogic.gdx.scenes.scene2d.ui.Container<>(tf);
-        box.fill(); // 컨테이너는 스택 전체를 채우게 하고,
+        box.fill();
 
         Stack st = new Stack();
-        st.add(frame); // 0: 프레임 이미지
-        st.add(box);   // 1: 패딩을 줄 컨테이너(안에 TextField)
+        st.add(frame);
+        st.add(box);
         return st;
     }
 
-    /** 뷰포트 기준으로 전체 배치/스케일 계산 */
     private void layoutActors() {
         float vw = stage.getViewport().getWorldWidth();
         float vh = stage.getViewport().getWorldHeight();
 
-        // ---- Board 크기/위치 ----
-        final float BOARD_W = 1f; // (원하면 1.0f 등으로 변경)
+        final float BOARD_W = 1f;
         float targetBoardW = vw * BOARD_W;
         float sBoard = targetBoardW / board.getDrawable().getMinWidth();
         float bw = board.getDrawable().getMinWidth()  * sBoard;
@@ -244,17 +240,15 @@ public class CreateRoomScreen implements Screen {
         board.setSize(bw, bh);
         board.setPosition(vw * 0.5f, vh * 0.50f, Align.center);
 
-        // ---- Buttons 크기/위치 ----
         float btnW = bw * 0.15f;
-        positionButton(btnCheck,  btnW, board.getX() + bw*0.42f, board.getY() + bh*0.24f); // 확인(왼쪽)
-        positionButton(btnCancel, btnW, board.getX() + bw*0.58f, board.getY() + bh*0.24f); // 취소(오른쪽)
+        positionButton(btnCheck,  btnW, board.getX() + bw*0.42f, board.getY() + bh*0.24f);
+        positionButton(btnCancel, btnW, board.getX() + bw*0.58f, board.getY() + bh*0.24f);
 
-        // ---- 입력칸 크기/위치 (보드가 화면폭 1.0 기준 튜닝값) ----
-        final float INPUT_W_P = 0.245f;  // 입력칸 가로폭(보드 폭 대비)
-        final float INPUT_H_P = 0.082f; // 입력칸 세로폭(보드 높이 대비)
-        final float COL_X_P   = 0.62f;  // 오른쪽 열 중심 X(보드 폭 대비)
-        final float TOP_Y_P   = 0.55f;  // 첫 입력칸 중심 Y(보드 높이 대비)
-        final float GAP_Y_P   = 0.094f;  // 입력칸 사이 중심-중심 간격(보드 높이 대비)
+        final float INPUT_W_P = 0.245f;
+        final float INPUT_H_P = 0.082f;
+        final float COL_X_P   = 0.62f;
+        final float TOP_Y_P   = 0.55f;
+        final float GAP_Y_P   = 0.094f;
 
         float inputW = bw * INPUT_W_P;
         float inputH = bh * INPUT_H_P;
@@ -263,14 +257,12 @@ public class CreateRoomScreen implements Screen {
         setStackSize(input2, inputW, inputH);
         setStackSize(input3, inputW, inputH);
 
-        // 프레임 안쪽 여백(텍스트 박스 패딩)
-        final float INSET_X_P = 0.14f;  // 좌우 안쪽 여백(프레임 폭 대비)
-        final float INSET_Y_P = 0.30f;  // 상하 안쪽 여백(프레임 높이 대비)
+        final float INSET_X_P = 0.14f;
+        final float INSET_Y_P = 0.30f;
         applyInsets(input1, inputW, inputH, INSET_X_P, INSET_Y_P);
         applyInsets(input2, inputW, inputH, INSET_X_P, INSET_Y_P);
         applyInsets(input3, inputW, inputH, INSET_X_P, INSET_Y_P);
 
-        // 위치(오른쪽 열에 위→아래로 일정 간격)
         float colX = board.getX() + bw * COL_X_P;
         float y1   = board.getY() + bh * TOP_Y_P;
         float y2   = board.getY() + bh * (TOP_Y_P - GAP_Y_P);
@@ -293,13 +285,11 @@ public class CreateRoomScreen implements Screen {
 
     private void setStackSize(Stack st, float w, float h) {
         st.setSize(w, h);
-        ((Image) st.getChildren().get(0)).setSize(w, h); // 프레임 Image
+        ((Image) st.getChildren().get(0)).setSize(w, h);
     }
-
 
     private void applyInsets(Stack st, float frameW, float frameH,
                              float insetXPct, float insetYPct) {
-        // Stack의 두 번째 자식이 Container<TextField> 라는 가정
         com.badlogic.gdx.scenes.scene2d.ui.Container<?> box =
             (com.badlogic.gdx.scenes.scene2d.ui.Container<?>) st.getChildren().get(1);
 
@@ -310,16 +300,32 @@ public class CreateRoomScreen implements Screen {
         box.padRight(padX);
         box.padTop(padY);
         box.padBottom(padY);
-        box.invalidate(); // 레이아웃 갱신
+        box.invalidate();
     }
 
     // ========= Screen =========
 
-    @Override public void show() {}
+    @Override 
+    public void show() {
+        // ★ 네트워크 리스너 설정
+        Net.get().setListener(new Net.Listener() {
+            @Override
+            public void onCreateRoomOk(String roomId) {
+                Gdx.app.log("CREATE", "방 생성 완료! roomId=" + roomId);
+                // LobbyScreen으로 이동
+                app.setScreen(new LobbyScreen(app, roomId));
+            }
+
+            @Override
+            public void onServerError(String code, String message) {
+                Gdx.app.error("CREATE", "서버 에러: " + code + " - " + message);
+                // TODO: 에러 메시지 표시
+            }
+        });
+    }
 
     @Override
     public void render(float delta) {
-        // (1) 가위 테스트 끄고, 백버퍼 픽셀 크기 기준으로 전체 클리어
         Gdx.gl.glDisable(GL20.GL_SCISSOR_TEST);
         Gdx.gl.glViewport(0, 0,
             Gdx.graphics.getBackBufferWidth(),
@@ -327,14 +333,11 @@ public class CreateRoomScreen implements Screen {
         Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // (2) 현재 화면의 뷰포트를 다시 적용(카메라/레터박스 정렬)
         stage.getViewport().apply(true);
 
-        // (3) 그리기
         stage.act(delta);
         stage.draw();
     }
-
 
     @Override
     public void resize(int width, int height) {
@@ -347,7 +350,11 @@ public class CreateRoomScreen implements Screen {
 
     @Override public void pause() {}
     @Override public void resume() {}
-    @Override public void hide() {}
+    @Override 
+    public void hide() {
+        // 리스너 해제
+        Net.get().setListener(null);
+    }
 
     @Override
     public void dispose() {
