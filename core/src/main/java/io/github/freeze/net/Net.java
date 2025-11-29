@@ -23,13 +23,14 @@ public final class Net {
         
         // 게임 관련
         default void onGameStart(String roleJson) {}
-        default void onPlayerMove(String playerId, float dx, float dy, float x, float y) {}  // ★ dx, dy 추가
+        // ★★★ 수정: dx, dy 파라미터 추가 ★★★
+        default void onPlayerMove(String playerId, float dx, float dy, float x, float y) {}
         default void onPlayerFreeze(String targetId, String attackerId) {}
         default void onPlayerUnfreeze(String targetId, String unfreezeId) {}
         default void onSkillUsed(String playerId, String skillType) {}
         default void onFogActivated(String playerId) {}
         default void onPlayerReady(String playerId, boolean isReady) {}
-        default void onPlayerJoined(String playerId, float x, float y) {}
+        default void onPlayerJoined(String playerId) {}
         default void onPlayerLeft(String playerId) {}
     }
 
@@ -112,13 +113,12 @@ public final class Net {
 
     // ====== API (서버 문서 포맷에 맞춤) ======
     
-    // 방 생성 (★ playerId 추가 - 생성자 자동 입장)
-    public void sendCreateRoom(String code, String title, String password, String playerId) {
+    // 방 생성
+    public void sendCreateRoom(String code, String title, String password) {
         Map<String,Object> payload = new HashMap<>();
         payload.put("code", code);
         payload.put("title", title);
         payload.put("password", password);
-        payload.put("playerId", playerId);  // ★ 생성자 ID
 
         Map<String,Object> msg = new HashMap<>();
         msg.put("type", "createRoom");
@@ -161,14 +161,14 @@ public final class Net {
         sendJson(msg);
     }
     
-    // 플레이어 이동 (★ x, y 좌표도 전송!)
+    // 플레이어 이동 (★★★ x, y 좌표 추가 ★★★)
     public void sendPlayerMove(String playerId, float dx, float dy, float x, float y) {
         Map<String,Object> payload = new HashMap<>();
         payload.put("playerId", playerId);
         payload.put("dx", dx);
         payload.put("dy", dy);
-        payload.put("x", x);    // ★ 좌표 추가
-        payload.put("y", y);    // ★ 좌표 추가
+        payload.put("x", x);   // ★ 현재 위치 X
+        payload.put("y", y);   // ★ 현재 위치 Y
         
         Map<String,Object> msg = new HashMap<>();
         msg.put("type", "move");
@@ -243,12 +243,10 @@ public final class Net {
         try {
             JsonObject jo = JsonParser.parseString(msg).getAsJsonObject();
             
-            // ★ "op" → "type"으로 변경
             String type = jo.has("type") ? jo.get("type").getAsString() : "";
             
             switch (type) {
                 case "roomCreated": {
-                    // data 객체에서 정보 추출
                     if (jo.has("data")) {
                         JsonObject data = jo.getAsJsonObject("data");
                         String code = data.has("code") ? data.get("code").getAsString() : "";
@@ -267,46 +265,25 @@ public final class Net {
                 case "playerJoined": {
                     String roomId = jo.has("roomId") ? jo.get("roomId").getAsString() : "";
                     
-                    // ★ snapshot에서 플레이어 정보 추출 (위치 포함!)
                     if (jo.has("snapshot")) {
                         JsonObject snapshot = jo.getAsJsonObject("snapshot");
                         
-                        // players 배열이 있으면 파싱
                         if (snapshot.has("players")) {
                             JsonArray playersArray = snapshot.getAsJsonArray("players");
                             for (int i = 0; i < playersArray.size(); i++) {
-                                JsonElement elem = playersArray.get(i);
-                                
-                                // ★ 객체 형태 (id, x, y 포함)
-                                if (elem.isJsonObject()) {
-                                    JsonObject playerObj = elem.getAsJsonObject();
-                                    String playerId = playerObj.has("id") ? playerObj.get("id").getAsString() : "";
-                                    float x = playerObj.has("x") ? playerObj.get("x").getAsFloat() : 0f;
-                                    float y = playerObj.has("y") ? playerObj.get("y").getAsFloat() : 0f;
-                                    
-                                    if (listener != null && !playerId.isEmpty()) {
-                                        listener.onPlayerJoined(playerId, x, y);
-                                    }
-                                    Gdx.app.log("WS", "Player: " + playerId + " at (" + x + ", " + y + ")");
-                                } 
-                                // ★ 문자열 형태 (하위 호환)
-                                else if (elem.isJsonPrimitive()) {
-                                    String playerId = elem.getAsString();
-                                    if (listener != null) listener.onPlayerJoined(playerId, 0f, 0f);
-                                }
+                                String playerId = playersArray.get(i).getAsString();
+                                if (listener != null) listener.onPlayerJoined(playerId);
                             }
                         }
                     }
                     
                     Gdx.app.log("WS", "Player joined room: " + roomId);
                     
-                    // ★ 입장 성공 콜백 (LobbyScreen으로 이동)
                     if (listener != null) listener.onJoinOk(roomId);
                     break;
                 }
                 
                 case "gameStarted": {
-                    // snapshot에서 role 정보 추출
                     if (jo.has("snapshot")) {
                         JsonObject snapshot = jo.getAsJsonObject("snapshot");
                         String roleJson = snapshot.toString();
@@ -316,12 +293,15 @@ public final class Net {
                     break;
                 }
                 
+                // ★★★ 수정: dx, dy 파싱 추가 ★★★
                 case "playerMoved": {
                     String playerId = jo.has("playerId") ? jo.get("playerId").getAsString() : "";
                     float dx = jo.has("dx") ? jo.get("dx").getAsFloat() : 0f;
                     float dy = jo.has("dy") ? jo.get("dy").getAsFloat() : 0f;
                     float x = jo.has("x") ? jo.get("x").getAsFloat() : 0f;
                     float y = jo.has("y") ? jo.get("y").getAsFloat() : 0f;
+                    
+                    Gdx.app.log("WS", "Player moved: " + playerId + " dx=" + dx + " dy=" + dy + " pos=(" + x + "," + y + ")");
                     
                     if (listener != null) listener.onPlayerMove(playerId, dx, dy, x, y);
                     break;
@@ -371,7 +351,6 @@ public final class Net {
                 }
                 
                 case "error": {
-                    // ★ payload 안에서 code와 message 찾기
                     String code = "UNKNOWN";
                     String message = "";
                     

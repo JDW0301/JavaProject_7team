@@ -113,24 +113,13 @@ public class GameScreen implements Screen {
 
     // ★ 서버에서 받은 역할 정보
     private Map<String, PlayerRole> serverRoles = new HashMap<>();
-    private Map<String, float[]> serverPositions = new HashMap<>();  // ★ 위치 정보
 
     public GameScreen(Core app) {
-        this(app, null, null, null);  // 테스트 모드
+        this(app, null);  // 테스트 모드
     }
 
-    // ★ 서버 연동용 생성자 (역할만)
+    // ★ 서버 연동용 생성자
     public GameScreen(Core app, Map<String, PlayerRole> roles) {
-        this(app, roles, null, null);
-    }
-    
-    // ★ 서버 연동용 생성자 (역할 + 위치)
-    public GameScreen(Core app, Map<String, PlayerRole> roles, Map<String, float[]> positions) {
-        this(app, roles, positions, null);
-    }
-    
-    // ★ 서버 연동용 생성자 (역할 + 위치 + 내 ID)
-    public GameScreen(Core app, Map<String, PlayerRole> roles, Map<String, float[]> positions, String myId) {
         this.app = app;
         this.stage = new Stage(new FitViewport(VW, VH), app.batch);
         Gdx.input.setInputProcessor(stage);
@@ -142,17 +131,10 @@ public class GameScreen implements Screen {
         setupNetworkListener();
 
         if (roles != null && !roles.isEmpty()) {
-            // ★ 서버 모드: 역할 + 위치 정보로 플레이어 생성
+            // ★ 서버 모드: 역할 정보로 플레이어 생성
             localTestMode = false;
             serverRoles = roles;
-            if (positions != null) {
-                serverPositions = positions;
-            }
-            // ★ myPlayerId 먼저 설정!
-            if (myId != null && !myId.isEmpty()) {
-                myPlayerId = myId;
-            }
-            createPlayersFromServer(roles, serverPositions);
+            createPlayersFromServer(roles);
         } else {
             // ★ 테스트 모드: 로컬 플레이어 생성
             localTestMode = true;
@@ -360,12 +342,13 @@ public class GameScreen implements Screen {
                 Gdx.app.log("GAME", "Game started! Role: " + roleJson);
             }
 
+            // ★★★ 수정: dx, dy 파라미터 추가 및 moveOther 호출 ★★★
             @Override
             public void onPlayerMove(String playerId, float dx, float dy, float x, float y) {
                 Player p = players.get(playerId);
                 if (p != null && !playerId.equals(myPlayerId)) {
-                    // ★ 다른 플레이어 이동 처리 (애니메이션 포함)
-                    p.moveOther(dx, dy, x, y);
+                    p.moveOther(dx, dy, x, y);  // ★ 애니메이션 포함 이동
+                    Gdx.app.log("GAME", "Player moved: " + playerId + " dx=" + dx + " dy=" + dy);
                 }
             }
 
@@ -374,7 +357,6 @@ public class GameScreen implements Screen {
                 Player target = players.get(targetId);
                 if (target != null) {
                     target.startFreeze();
-                    Gdx.app.log("GAME", "서버: " + targetId + " 빙결됨 (by " + attackerId + ")");
                 }
             }
 
@@ -383,7 +365,6 @@ public class GameScreen implements Screen {
                 Player target = players.get(targetId);
                 if (target != null) {
                     target.startUnfreeze();
-                    Gdx.app.log("GAME", "서버: " + targetId + " 해빙됨 (by " + unfreezeId + ")");
                 }
             }
 
@@ -395,25 +376,18 @@ public class GameScreen implements Screen {
                 switch (skillType) {
                     case "dash":
                         p.useDashSkill();
-                        Gdx.app.log("GAME", playerId + " 대시 스킬!");
                         break;
                     case "fog":
                         p.useFogSkill();
-                        // ★ Chaser 화면에 안개 표시
-                        if (myPlayer != null && myPlayer.getRole() == PlayerRole.CHASER) {
-                            fogEffect.activate();
-                            Gdx.app.log("GAME", playerId + " 안개 스킬! Chaser 화면에 안개!");
-                        }
                         break;
                 }
             }
 
             @Override
             public void onFogActivated(String playerId) {
-                // ★ Chaser 화면에만 안개 표시 (서버가 별도로 보내는 경우)
+                // Chaser 화면에만 안개 표시
                 if (myPlayer != null && myPlayer.getRole() == PlayerRole.CHASER) {
                     fogEffect.activate();
-                    Gdx.app.log("GAME", "안개 활성화!");
                 }
             }
         });
@@ -513,37 +487,28 @@ public class GameScreen implements Screen {
         centerCameraOnPlayer(myPlayer);
     }
 
-    // ========== 서버 모드: 역할 + 위치 정보로 플레이어 생성 ==========
-    private void createPlayersFromServer(Map<String, PlayerRole> roles, Map<String, float[]> positions) {
-        // ★ myPlayerId가 아직 설정 안 됐으면 Preferences에서 가져오기
-        if (myPlayerId == null || myPlayerId.isEmpty()) {
-            Preferences pref = Gdx.app.getPreferences("settings");
-            String myNick = pref.getString("nickname", "");
-            if (myNick.isEmpty()) {
-                myNick = "Player" + (int)(Math.random() * 10000);
-                pref.putString("nickname", myNick);
-                pref.flush();
-            }
-            myPlayerId = myNick;
+    // ========== 서버 모드: 역할 정보로 플레이어 생성 ==========
+    private void createPlayersFromServer(Map<String, PlayerRole> roles) {
+        // ★ Preferences에서 내 닉네임 가져오기
+        Preferences pref = Gdx.app.getPreferences("settings");
+        String myNick = pref.getString("nickname", "");
+        if (myNick.isEmpty()) {
+            myNick = "Player" + (int)(Math.random() * 10000);
         }
+        myPlayerId = myNick;
 
-        Gdx.app.log("GAME", "★ 서버 모드 - 플레이어 생성 시작 (내 ID: " + myPlayerId + ")");
-        Gdx.app.log("GAME", "받은 역할: " + roles);
-        Gdx.app.log("GAME", "받은 위치: " + positions);
+        Gdx.app.log("GAME", "서버 모드 - 플레이어 생성 시작 (내 ID: " + myPlayerId + ")");
 
         for (Map.Entry<String, PlayerRole> entry : roles.entrySet()) {
             String playerId = entry.getKey();
             PlayerRole role = entry.getValue();
-            
-            // ★ 위치 가져오기 (없으면 null)
-            float[] pos = positions != null ? positions.get(playerId) : null;
 
-            Player player = createPlayerWithRole(playerId, role, pos);
+            Player player = createPlayerWithRole(playerId, role);
             players.put(playerId, player);
 
             if (playerId.equals(myPlayerId)) {
                 myPlayer = player;
-                Gdx.app.log("GAME", "★ 내 캐릭터 생성: " + playerId + " (" + role + ")");
+                Gdx.app.log("GAME", "내 캐릭터 생성: " + playerId + " (" + role + ")");
             } else {
                 Gdx.app.log("GAME", "다른 플레이어 생성: " + playerId + " (" + role + ")");
             }
@@ -552,28 +517,16 @@ public class GameScreen implements Screen {
         if (myPlayer != null) {
             myPlayer.getImage().toFront();
             centerCameraOnPlayer(myPlayer);
-        } else {
-            Gdx.app.error("GAME", "★ 내 캐릭터를 찾을 수 없음! myPlayerId=" + myPlayerId + ", players=" + players.keySet());
         }
     }
 
-    // ★ 역할에 따라 플레이어 생성 (위치 포함)
-    private Player createPlayerWithRole(String playerId, PlayerRole role, float[] pos) {
+    // ★ 역할에 따라 플레이어 생성
+    private Player createPlayerWithRole(String playerId, PlayerRole role) {
         float heroH = worldH * 0.15f;
         
-        // ★ 위치 설정 (서버에서 받은 위치 or 랜덤)
-        float startX, startY;
-        if (pos != null && (pos[0] > 0 || pos[1] > 0)) {
-            // 서버에서 받은 위치 사용
-            startX = pos[0];
-            startY = pos[1];
-            Gdx.app.log("GAME", playerId + " 서버 위치: (" + startX + ", " + startY + ")");
-        } else {
-            // 랜덤 위치
-            startX = worldW * (0.2f + (float)Math.random() * 0.6f);
-            startY = worldH * (0.3f + (float)Math.random() * 0.4f);
-            Gdx.app.log("GAME", playerId + " 랜덤 위치: (" + startX + ", " + startY + ")");
-        }
+        // 랜덤 시작 위치
+        float startX = worldW * (0.2f + (float)Math.random() * 0.6f);
+        float startY = worldH * (0.3f + (float)Math.random() * 0.4f);
 
         if (role == PlayerRole.CHASER) {
             // ★ Chaser 생성
@@ -656,7 +609,7 @@ public class GameScreen implements Screen {
     public void addOtherPlayer(String playerId, PlayerRole role) {
         if (players.containsKey(playerId)) return;
 
-        Player player = createPlayerWithRole(playerId, role, null);  // ★ 위치 없으면 null
+        Player player = createPlayerWithRole(playerId, role);
         players.put(playerId, player);
         Gdx.app.log("GAME", "플레이어 추가: " + playerId + " (" + role + ")");
     }
@@ -698,20 +651,15 @@ public class GameScreen implements Screen {
             if (!localTestMode) {
                 moveSendTimer += delta;
                 if (moveSendTimer >= MOVE_SEND_INTERVAL) {
-                    // ★ 좌표도 함께 전송!
-                    float px = myPlayer.getImage().getX();
-                    float py = myPlayer.getImage().getY();
-                    Net.get().sendPlayerMove(myPlayerId, dx, dy, px, py);
+                    // ★★★ 수정: 현재 위치(x, y)도 함께 전송 ★★★
+                    float x = myPlayer.getPosition().x;
+                    float y = myPlayer.getPosition().y;
+                    Net.get().sendPlayerMove(myPlayerId, dx, dy, x, y);
                     moveSendTimer = 0f;
                 }
             }
         } else {
-            // ★ 멈출 때도 서버에 전송 (다른 클라이언트가 멈춤 인식)
-            if (!localTestMode && myPlayer.isMoving()) {
-                float px = myPlayer.getImage().getX();
-                float py = myPlayer.getImage().getY();
-                Net.get().sendPlayerMove(myPlayerId, 0, 0, px, py);
-            }
+            // 이동 안 할 때 velocity 초기화 (애니메이션 멈춤)
             myPlayer.stopMoving();
         }
         
@@ -778,15 +726,7 @@ public class GameScreen implements Screen {
         if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
             myPlayer.useFogSkill();
             if (myPlayer.getFogSkill().isActive()) {
-                // ★ 서버 모드일 때 서버로 전송
-                if (!localTestMode) {
-                    Net.get().sendSkillUse("fog");
-                } else {
-                    // ★ 테스트 모드: Chaser 화면에 안개 표시 (Chaser가 myPlayer이므로)
-                    // 실제로는 다른 플레이어(Chaser)에게 전달되어야 함
-                    // 테스트 모드에서는 myPlayer가 Chaser이므로 이 코드는 실행 안 됨
-                }
-                Gdx.app.log("GAME", "Runner 안개 스킬 사용!");
+                Net.get().sendSkillUse("fog");
             }
         }
 
@@ -794,11 +734,7 @@ public class GameScreen implements Screen {
         if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
             myPlayer.useDashSkill();
             if (myPlayer.getDashSkill().isActive()) {
-                // ★ 서버 모드일 때 서버로 전송
-                if (!localTestMode) {
-                    Net.get().sendSkillUse("dash");
-                }
-                Gdx.app.log("GAME", "Runner 대시 스킬 사용!");
+                Net.get().sendSkillUse("dash");
             }
         }
 
@@ -808,13 +744,11 @@ public class GameScreen implements Screen {
             Player frozenTarget = findNearestFrozenPlayer();
             if (frozenTarget != null && myPlayer.getState() != PlayerState.UNFREEZING_TARGET) {
                 myPlayer.startUnfreezeTarget(frozenTarget);
-                Gdx.app.log("GAME", "Runner " + frozenTarget.getPlayerId() + " 해빙 시도 중...");
             }
         } else {
             // F키를 떼면 해빙 취소
             if (myPlayer.getState() == PlayerState.UNFREEZING_TARGET) {
                 myPlayer.cancelUnfreeze();
-                Gdx.app.log("GAME", "Runner 해빙 취소");
             }
         }
     }
@@ -825,7 +759,7 @@ public class GameScreen implements Screen {
             // 공격 시작/유지
             if (!myPlayer.isAttacking()) {
                 myPlayer.startAttack();
-                Gdx.app.log("GAME", "Chaser Q 공격 시작!");
+                Gdx.app.log("TEST", "Chaser Q 공격 시작!");
             }
 
             // 범위 내 Runner 빙결 시작/유지
@@ -836,12 +770,10 @@ public class GameScreen implements Screen {
                     if (dist <= FREEZE_RANGE) {
                         // 범위 안 → 빙결 시작/유지
                         if (!p.isFrozen() && p.getState() != PlayerState.FREEZING) {
-                            // ★ 테스트/서버 모드 모두 빙결 시작
-                            p.startFreeze();
-                            Gdx.app.log("GAME", "★ " + p.getPlayerId() + " 빙결 시작!");
-                            
-                            // ★ 서버 모드일 때 서버에도 전송
-                            if (!localTestMode) {
+                            if (localTestMode) {
+                                p.startFreeze();
+                                Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 빙결 시작!");
+                            } else {
                                 Net.get().sendFreeze(p.getPlayerId());
                             }
                         }
@@ -852,18 +784,13 @@ public class GameScreen implements Screen {
             // Q 뗌 → 공격 멈춤
             if (myPlayer.isAttacking()) {
                 myPlayer.cancelAttack();
-                Gdx.app.log("GAME", "Chaser Q 공격 멈춤!");
+                Gdx.app.log("TEST", "Chaser Q 공격 멈춤!");
                 
-                // ★ 빙결 중인 Runner들 해빙 시작 (테스트/서버 모드 모두)
+                // 빙결 중인 Runner들 해빙 시작
                 for (Player p : players.values()) {
                     if (p.getRole() == PlayerRole.RUNNER && p.getState() == PlayerState.FREEZING) {
                         p.startUnfreeze();
-                        Gdx.app.log("GAME", "★ " + p.getPlayerId() + " 해빙 시작!");
-                        
-                        // ★ 서버 모드일 때 서버에도 전송
-                        if (!localTestMode) {
-                            Net.get().sendUnfreeze(p.getPlayerId());
-                        }
+                        Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 해빙 시작!");
                     }
                 }
             }
@@ -1021,13 +948,16 @@ public class GameScreen implements Screen {
         // 플레이어 업데이트
         for (Player p : players.values()) {
             p.update(delta);
-            
-            // ★ 해빙 완료 시 서버 전송
-            String unfreezeTargetId = p.popUnfreezeCompletedTargetId();
-            if (unfreezeTargetId != null && !localTestMode) {
-                Net.get().sendUnfreeze(unfreezeTargetId);
-                Gdx.app.log("GAME", "Runner " + p.getPlayerId() + " → " + unfreezeTargetId + " 해빙 완료! 서버 전송");
+        }
+        
+        // ★★★ 추가: 해빙 완료 체크 및 서버 전송 ★★★
+        if (myPlayer != null && myPlayer.isUnfreezeCompleted()) {
+            String targetId = myPlayer.getLastUnfreezeTargetId();
+            if (targetId != null && !localTestMode) {
+                Net.get().sendUnfreeze(targetId);
+                Gdx.app.log("GAME", "해빙 완료! 서버에 전송: " + targetId);
             }
+            myPlayer.clearUnfreezeCompleted();
         }
 
         // 카메라

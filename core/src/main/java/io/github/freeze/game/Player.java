@@ -57,7 +57,6 @@ public class Player {
     // 해빙 진행
     private float unfreezeProgress = 0f;
     private Player unfreezeTarget = null;
-    private String unfreezeCompletedTargetId = null;  // ★ 해빙 완료된 타겟 ID
     
     // ★ 닉네임
     private String nickname;
@@ -189,7 +188,7 @@ public class Player {
         velocity.set(0, 0);
     }
     
-    // ★ 다른 플레이어 이동 (서버에서 받은 데이터로 처리)
+    // ★★★ 추가: 다른 플레이어 이동 (네트워크 수신용) ★★★
     public void moveOther(float dx, float dy, float x, float y) {
         // 위치 설정
         position.set(x, y);
@@ -199,17 +198,20 @@ public class Player {
         if (dx > 0) facingRight = true;
         else if (dx < 0) facingRight = false;
         
-        // 움직임 여부 설정
-        if (dx != 0 || dy != 0) {
-            velocity.set(dx, dy);  // 움직이는 중
+        // 이동 중인지 판단 (velocity 설정)
+        float len = (float)Math.sqrt(dx*dx + dy*dy);
+        if (len > 0.1f) {
+            // 이동 중 - velocity 설정해서 애니메이션 재생
+            velocity.set(dx / len, dy / len);
         } else {
-            velocity.set(0, 0);  // 멈춤
+            // 정지 - velocity 초기화
+            velocity.set(0, 0);
         }
     }
     
-    // ★ 다른 플레이어가 움직이는 중인지
+    // ★ 이동 중인지 확인
     public boolean isMoving() {
-        return velocity.x != 0 || velocity.y != 0;
+        return velocity.len() > 0.1f;
     }
     
     // ★ 방향만 설정 (이동 없이 애니메이션용)
@@ -361,19 +363,30 @@ public class Player {
 
         if (unfreezeProgress >= 3f && unfreezeTarget != null) {
             // 해빙 성공
-            unfreezeCompletedTargetId = unfreezeTarget.getPlayerId();  // ★ 타겟 ID 저장
+            lastUnfreezeTargetId = unfreezeTarget.getPlayerId();  // ★ 해빙 대상 ID 저장
             unfreezeTarget.startUnfreeze();
             unfreezeProgress = 0f;
             unfreezeTarget = null;
             state = PlayerState.NORMAL;
+            unfreezeCompleted = true;  // ★ 해빙 완료 플래그
         }
     }
     
-    // ★ 해빙 완료된 타겟 ID 가져오기 (가져오면 초기화)
-    public String popUnfreezeCompletedTargetId() {
-        String id = unfreezeCompletedTargetId;
-        unfreezeCompletedTargetId = null;
-        return id;
+    // ★★★ 추가: 해빙 완료 확인용 ★★★
+    private boolean unfreezeCompleted = false;
+    private String lastUnfreezeTargetId = null;
+    
+    public boolean isUnfreezeCompleted() {
+        return unfreezeCompleted;
+    }
+    
+    public String getLastUnfreezeTargetId() {
+        return lastUnfreezeTargetId;
+    }
+    
+    public void clearUnfreezeCompleted() {
+        unfreezeCompleted = false;
+        lastUnfreezeTargetId = null;
     }
 
     // === 빙결/해빙 ===
