@@ -361,7 +361,7 @@ public class Player {
     private void updateUnfreezeProgress(float delta) {
         unfreezeProgress += delta;
 
-        if (unfreezeProgress >= 3f && unfreezeTarget != null) {
+        if (unfreezeProgress >= 3f && unfreezeTarget != null) {  // ★ 3초 (원래대로)
             // 해빙 성공
             lastUnfreezeTargetId = unfreezeTarget.getPlayerId();  // ★ 해빙 대상 ID 저장
             unfreezeTarget.startUnfreeze();

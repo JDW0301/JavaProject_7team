@@ -34,7 +34,7 @@ public class GameScreen implements Screen {
 
     // 거리 상수
     private static final float FREEZE_RANGE = 250f;      // ★ 공격 범위
-    private static final float UNFREEZE_RANGE = 100f;    // 해빙 범위
+    private static final float UNFREEZE_RANGE = 250f;    // ★ 해빙 범위 (1m → 2.5m)
 
     private final Core app;
     private final Stage stage;
@@ -378,6 +378,9 @@ public class GameScreen implements Screen {
                 Player target = players.get(targetId);
                 if (target != null) {
                     target.startFreeze();
+                    Gdx.app.log("GAME", "★ 빙결 동기화: " + targetId + " (공격자: " + attackerId + ")");
+                } else {
+                    Gdx.app.log("GAME", "⚠️ 빙결 실패: " + targetId + " 플레이어 없음");
                 }
             }
 
@@ -386,6 +389,9 @@ public class GameScreen implements Screen {
                 Player target = players.get(targetId);
                 if (target != null) {
                     target.startUnfreeze();
+                    Gdx.app.log("GAME", "★ 해빙 동기화: " + targetId + " (해빙자: " + unfreezeId + ")");
+                } else {
+                    Gdx.app.log("GAME", "⚠️ 해빙 실패: " + targetId + " 플레이어 없음");
                 }
             }
 
@@ -886,10 +892,12 @@ public class GameScreen implements Screen {
                     if (dist <= FREEZE_RANGE) {
                         // 범위 안 → 빙결 시작/유지
                         if (!p.isFrozen() && p.getState() != PlayerState.FREEZING) {
-                            if (localTestMode) {
-                                p.startFreeze();
-                                Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 빙결 시작!");
-                            } else {
+                            // ★ 로컬에서도 즉시 빙결 적용
+                            p.startFreeze();
+                            Gdx.app.log("GAME", "★ " + p.getPlayerId() + " 빙결 시작!");
+                            
+                            // 서버에도 전송
+                            if (!localTestMode) {
                                 Net.get().sendFreeze(p.getPlayerId());
                             }
                         }
@@ -911,13 +919,14 @@ public class GameScreen implements Screen {
                 // 빙결 중인 Runner들 해빙 시작
                 for (Player p : players.values()) {
                     if (p.getRole() == PlayerRole.RUNNER && p.getState() == PlayerState.FREEZING) {
-                        if (localTestMode) {
-                            p.startUnfreeze();
-                        } else {
-                            // ★ 서버에 해빙 메시지 전송
+                        // ★ 로컬에서도 즉시 해빙 적용
+                        p.startUnfreeze();
+                        Gdx.app.log("GAME", "★ " + p.getPlayerId() + " 해빙 시작!");
+                        
+                        // 서버에도 전송
+                        if (!localTestMode) {
                             Net.get().sendUnfreeze(p.getPlayerId());
                         }
-                        Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 해빙 시작!");
                     }
                 }
             }
@@ -1119,7 +1128,12 @@ public class GameScreen implements Screen {
                 freezeWaitTimer += delta;
                 if (freezeWaitTimer >= FREEZE_WAIT_DURATION) {
                     // 2초 경과 → 승패 확정
+                    if (myPlayer == null) {
+                        Gdx.app.log("GAME", "⚠️ 전멸 판정 실패: myPlayer가 null");
+                        return;
+                    }
                     boolean iWin = (myPlayer.getRole() == PlayerRole.CHASER);
+                    Gdx.app.log("GAME", "★★★ 전멸 판정! 내 역할: " + myPlayer.getRole() + ", 승리: " + iWin);
                     triggerGameOver(iWin);
                     allRunnersFrozenDetected = false;
                 }
@@ -1133,7 +1147,13 @@ public class GameScreen implements Screen {
             // 시간 종료 → Runner 승리
             if (gameTime <= 0) {
                 gameTime = 0;
-                triggerGameOver(myPlayer.getRole() == PlayerRole.RUNNER);
+                if (myPlayer == null) {
+                    Gdx.app.log("GAME", "⚠️ 시간 종료 판정 실패: myPlayer가 null");
+                    return;
+                }
+                boolean iWin = (myPlayer.getRole() == PlayerRole.RUNNER);
+                Gdx.app.log("GAME", "★★★ 시간 종료! 내 역할: " + myPlayer.getRole() + ", 승리: " + iWin);
+                triggerGameOver(iWin);
             }
         }
         
@@ -1156,7 +1176,8 @@ public class GameScreen implements Screen {
             if (runnerCount > 0 && allRunnersFrozen) {
                 allRunnersFrozenDetected = true;
                 freezeWaitTimer = 0f;
-                Gdx.app.log("GAME", "★ 전멸 감지! 2초 후 게임 종료...");
+                String roleStr = (myPlayer != null ? myPlayer.getRole().toString() : "NULL");
+                Gdx.app.log("GAME", "★ 전멸 감지! 2초 후 게임 종료... (내 역할: " + roleStr + ")");
             }
         }
 
@@ -1225,7 +1246,12 @@ public class GameScreen implements Screen {
     
     // ★ 게임 종료 트리거
     private void triggerGameOver(boolean won) {
-        if (gameOver) return;  // 이미 게임 종료됨
+        if (gameOver) {
+            Gdx.app.log("GAME", "⚠️ 이미 게임 종료됨! (중복 호출)");
+            return;  // 이미 게임 종료됨
+        }
+        
+        Gdx.app.log("GAME", "★★★ triggerGameOver 호출! 승리: " + won + ", 역할: " + (myPlayer != null ? myPlayer.getRole() : "null"));
         
         gameOver = true;
         isWinner = won;
@@ -1258,26 +1284,32 @@ public class GameScreen implements Screen {
         stage.act(delta);
         stage.draw();
         
-        // 승패 이미지 애니메이션 (위에서 중앙으로)
-        if (resultImageY > 480f) {
-            resultImageY -= 1500f * delta;  // 빠르게 내려옴
-            if (resultImageY < 480f) resultImageY = 480f;
-        }
+        // ★ 승패 이미지 렌더링 (화면 좌표계)
+        float screenW = stage.getViewport().getScreenWidth();
+        float screenH = stage.getViewport().getScreenHeight();
         
-        // 승패 이미지 렌더링
-        app.batch.setProjectionMatrix(app.batch.getProjectionMatrix().idt());
-        app.batch.getProjectionMatrix().setToOrtho2D(0, 0,
-            stage.getViewport().getScreenWidth(),
-            stage.getViewport().getScreenHeight());
+        // ★ 새로운 Matrix 생성 (안전!)
+        com.badlogic.gdx.math.Matrix4 projMatrix = new com.badlogic.gdx.math.Matrix4();
+        projMatrix.setToOrtho2D(0, 0, screenW, screenH);
         
+        app.batch.setProjectionMatrix(projMatrix);
         app.batch.begin();
         
+        // 승패 이미지 선택
         Texture resultTex = isWinner ? texYouWin : texYouLose;
-        float imgW = 600f;
-        float imgH = imgW * (resultTex.getHeight() / (float)resultTex.getWidth());
-        float imgX = (stage.getViewport().getScreenWidth() - imgW) / 2f;
         
-        app.batch.draw(resultTex, imgX, resultImageY - imgH/2f, imgW, imgH);
+        if (gameOverTimer < 0.1f) {  // 첫 프레임에만 로그
+            Gdx.app.log("GAME", "★★★ handleGameOver 렌더링! isWinner: " + isWinner + 
+                       ", Texture: " + (resultTex != null ? "OK" : "NULL") +
+                       ", Screen: " + screenW + "x" + screenH);
+        }
+        
+        // ★ 화면 꽉 차게 그리기
+        if (resultTex != null) {
+            app.batch.draw(resultTex, 0, 0, screenW, screenH);
+        } else {
+            Gdx.app.log("GAME", "⚠️ resultTex is NULL!");
+        }
         
         app.batch.end();
         
