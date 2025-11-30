@@ -77,6 +77,12 @@ public class LobbyScreen implements Screen {
     private float moveSendTimer = 0f;
     private static final float MOVE_SEND_INTERVAL = 0.05f;  // 50ms마다 전송
     
+    // ★ 이전 프레임 이동 상태 (정지 메시지 전송용)
+    private boolean wasMovingLastFrame = false;
+    
+    // ★ 닉네임 렌더링용 폰트
+    private com.badlogic.gdx.graphics.g2d.BitmapFont font;
+    
     // ★ 초기 플레이어 위치
     private Map<String, float[]> initialPositions;
     
@@ -135,6 +141,10 @@ public class LobbyScreen implements Screen {
             texRight[i] = load("images/Right_C" + (i + 1) + ".png");
             texLeft[i] = load("images/Left_C" + (i + 1) + ".png");
         }
+        
+        // ★ 닉네임 렌더링용 폰트
+        font = new com.badlogic.gdx.graphics.g2d.BitmapFont();
+        font.getData().setScale(1.5f);  // 폰트 크기 확대
     }
 
     // ========== 월드 설정 ==========
@@ -412,8 +422,19 @@ public class LobbyScreen implements Screen {
                 Net.get().sendPlayerMove(myPlayerId, dx, dy, x, y);
                 moveSendTimer = 0f;
             }
+            wasMovingLastFrame = true;  // ★ 이동 중 플래그
         } else {
             me.stopMoving();
+            
+            // ★ 이동 → 정지 전환 시점에만 정지 메시지 전송!
+            if (wasMovingLastFrame) {
+                float x = me.getPosition().x;
+                float y = me.getPosition().y;
+                Net.get().sendPlayerMove(myPlayerId, 0, 0, x, y);  // dx=0, dy=0으로 정지 알림
+                Gdx.app.log("LOBBY", "정지 메시지 전송: " + myPlayerId);
+                wasMovingLastFrame = false;
+            }
+            
             moveSendTimer = 0f;
         }
         
@@ -574,6 +595,41 @@ public class LobbyScreen implements Screen {
 
         stage.act(delta);
         stage.draw();
+        
+        // ★ 닉네임 렌더링 (플레이어 머리 위)
+        renderPlayerNicknames();
+    }
+    
+    // ★ 닉네임 렌더링 메서드
+    private void renderPlayerNicknames() {
+        // 월드 좌표로 카메라 설정
+        app.batch.setProjectionMatrix(stage.getCamera().combined);
+        app.batch.begin();
+        
+        for (Player p : players.values()) {
+            Image img = p.getImage();
+            if (img == null) continue;
+            
+            float centerX = img.getX() + img.getWidth() / 2f;
+            float topY = img.getY() + img.getHeight();
+            
+            // 닉네임 표시 (캐릭터 머리 위)
+            String nickname = p.getNickname();
+            if (nickname == null || nickname.isEmpty()) continue;
+            
+            com.badlogic.gdx.graphics.g2d.GlyphLayout layout = 
+                new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, nickname);
+            float textX = centerX - layout.width / 2f;
+            float textY = topY + 30f + layout.height;
+            
+            // 닉네임 배경 (가독성용)
+            font.setColor(com.badlogic.gdx.graphics.Color.BLACK);
+            font.draw(app.batch, nickname, textX + 1, textY - 1);
+            font.setColor(com.badlogic.gdx.graphics.Color.WHITE);
+            font.draw(app.batch, nickname, textX, textY);
+        }
+        
+        app.batch.end();
     }
 
     @Override
@@ -612,5 +668,6 @@ public class LobbyScreen implements Screen {
         texIdle.dispose();
         for (Texture t : texRight) t.dispose();
         for (Texture t : texLeft) t.dispose();
+        if (font != null) font.dispose();  // ★ 폰트 해제
     }
 }

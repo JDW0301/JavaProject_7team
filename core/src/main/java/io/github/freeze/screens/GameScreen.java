@@ -110,6 +110,18 @@ public class GameScreen implements Screen {
     // 입력
     private float moveSendTimer = 0f;
     private static final float MOVE_SEND_INTERVAL = 0.05f; // 20fps로 위치 전송
+    
+    // ★ 이전 프레임 이동 상태 (정지 메시지 전송용)
+    private boolean wasMovingLastFrame = false;
+
+    // ★ 게임 타이머 및 승패 관리
+    private float gameTime = 180f;  // 3분 = 180초
+    private boolean gameOver = false;
+    private boolean isWinner = false;
+    private float gameOverTimer = 0f;
+    private static final float GAME_OVER_DURATION = 5f;  // 5초 후 메인으로
+    private float resultImageY = 1200f;  // 승패 이미지 Y 위치 (애니메이션용)
+    private Texture texYouWin, texYouLose;  // 승패 이미지
 
     // ★ 서버에서 받은 역할 정보
     private Map<String, PlayerRole> serverRoles = new HashMap<>();
@@ -207,10 +219,14 @@ public class GameScreen implements Screen {
         texGage1 = load("images/gage1.png");
         texGage2 = load("images/gage2.png");
         
+        // ★ 승패 이미지
+        texYouWin = load("images/youwin.png");
+        texYouLose = load("images/youlose.png");
+        
         // ★ 폰트 생성
         font = new com.badlogic.gdx.graphics.g2d.BitmapFont();
         font.setColor(com.badlogic.gdx.graphics.Color.WHITE);
-        font.getData().setScale(1.2f);
+        font.getData().setScale(1.5f);  // ★ 크기 확대 (1.2 → 1.5)
     }
 
     // ========== 월드 설정 ==========
@@ -369,7 +385,7 @@ public class GameScreen implements Screen {
             }
 
             @Override
-            public void onSkillUsed(String playerId, String skillType) {
+            public void onSkillUsed(String playerId, String skillType, String targetId) {
                 Player p = players.get(playerId);
                 if (p == null) return;
 
@@ -379,6 +395,27 @@ public class GameScreen implements Screen {
                         break;
                     case "fog":
                         p.useFogSkill();
+                        break;
+                    case "attack":  // ★ Chaser 공격 시작
+                        p.startAttack();
+                        Gdx.app.log("GAME", playerId + " 공격 시작!");
+                        break;
+                    case "attackCancel":  // ★ Chaser 공격 종료
+                        p.cancelAttack();
+                        Gdx.app.log("GAME", playerId + " 공격 종료!");
+                        break;
+                    case "unfreezeStart":  // ★ Runner 해빙 시작
+                        if (targetId != null) {
+                            Player target = players.get(targetId);
+                            if (target != null) {
+                                p.startUnfreezeTarget(target);
+                                Gdx.app.log("GAME", playerId + " → " + targetId + " 해빙 시작!");
+                            }
+                        }
+                        break;
+                    case "unfreezeCancel":  // ★ Runner 해빙 취소
+                        p.cancelUnfreeze();
+                        Gdx.app.log("GAME", playerId + " 해빙 취소!");
                         break;
                 }
             }
@@ -658,9 +695,19 @@ public class GameScreen implements Screen {
                     moveSendTimer = 0f;
                 }
             }
+            wasMovingLastFrame = true;  // ★ 이동 중 플래그
         } else {
             // 이동 안 할 때 velocity 초기화 (애니메이션 멈춤)
             myPlayer.stopMoving();
+            
+            // ★ 이동 → 정지 전환 시점에만 정지 메시지 전송!
+            if (!localTestMode && wasMovingLastFrame) {
+                float x = myPlayer.getPosition().x;
+                float y = myPlayer.getPosition().y;
+                Net.get().sendPlayerMove(myPlayerId, 0, 0, x, y);  // dx=0, dy=0으로 정지 알림
+                Gdx.app.log("GAME", "정지 메시지 전송: " + myPlayerId);
+                wasMovingLastFrame = false;
+            }
         }
         
         // ★ 테스트 모드: testRunner 조작
@@ -722,44 +769,61 @@ public class GameScreen implements Screen {
     }
 
     private void handleRunnerSkills() {
-        // Q: 안개
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
+        // E: 안개 (Q에서 변경)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
             myPlayer.useFogSkill();
             if (myPlayer.getFogSkill().isActive()) {
                 Net.get().sendSkillUse("fog");
             }
         }
 
-        // E: 대시
-        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+        // Shift: 대시 (E에서 변경)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.SHIFT_LEFT) || 
+            Gdx.input.isKeyJustPressed(Input.Keys.SHIFT_RIGHT)) {
             myPlayer.useDashSkill();
             if (myPlayer.getDashSkill().isActive()) {
                 Net.get().sendSkillUse("dash");
             }
         }
 
-        // F: 해빙
+        // F: 해빙 (그대로)
         if (Gdx.input.isKeyPressed(Input.Keys.F)) {
             // 가까운 얼린 플레이어 찾기
             Player frozenTarget = findNearestFrozenPlayer();
             if (frozenTarget != null && myPlayer.getState() != PlayerState.UNFREEZING_TARGET) {
                 myPlayer.startUnfreezeTarget(frozenTarget);
+                
+                // ★ 해빙 시작 서버 전송
+                if (!localTestMode) {
+                    Net.get().sendSkillUse("unfreezeStart", frozenTarget.getPlayerId());
+                }
             }
         } else {
             // F키를 떼면 해빙 취소
             if (myPlayer.getState() == PlayerState.UNFREEZING_TARGET) {
                 myPlayer.cancelUnfreeze();
+                
+                // ★ 해빙 취소 서버 전송
+                if (!localTestMode) {
+                    Net.get().sendSkillUse("unfreezeCancel");
+                }
             }
         }
     }
 
     private void handleChaserSkills() {
-        // Q: 공격 (누르고 있는 동안만)
-        if (Gdx.input.isKeyPressed(Input.Keys.Q)) {
+        // E: 공격 (Q에서 변경, 누르고 있는 동안만)
+        if (Gdx.input.isKeyPressed(Input.Keys.E)) {
             // 공격 시작/유지
             if (!myPlayer.isAttacking()) {
                 myPlayer.startAttack();
-                Gdx.app.log("TEST", "Chaser Q 공격 시작!");
+                
+                // ★ 공격 시작 서버 전송
+                if (!localTestMode) {
+                    Net.get().sendSkillUse("attack");
+                }
+                
+                Gdx.app.log("TEST", "Chaser E 공격 시작!");
             }
 
             // 범위 내 Runner 빙결 시작/유지
@@ -781,15 +845,26 @@ public class GameScreen implements Screen {
                 }
             }
         } else {
-            // Q 뗌 → 공격 멈춤
+            // E 뗌 → 공격 멈춤
             if (myPlayer.isAttacking()) {
                 myPlayer.cancelAttack();
-                Gdx.app.log("TEST", "Chaser Q 공격 멈춤!");
+                
+                // ★ 공격 종료 서버 전송
+                if (!localTestMode) {
+                    Net.get().sendSkillUse("attackCancel");
+                }
+                
+                Gdx.app.log("TEST", "Chaser E 공격 멈춤!");
                 
                 // 빙결 중인 Runner들 해빙 시작
                 for (Player p : players.values()) {
                     if (p.getRole() == PlayerRole.RUNNER && p.getState() == PlayerState.FREEZING) {
-                        p.startUnfreeze();
+                        if (localTestMode) {
+                            p.startUnfreeze();
+                        } else {
+                            // ★ 서버에 해빙 메시지 전송
+                            Net.get().sendUnfreeze(p.getPlayerId());
+                        }
                         Gdx.app.log("TEST", "★ " + p.getPlayerId() + " 해빙 시작!");
                     }
                 }
@@ -945,6 +1020,37 @@ public class GameScreen implements Screen {
         Gdx.gl.glViewport(0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
         stage.getViewport().apply(true);
 
+        // ★ 게임 종료 처리
+        if (gameOver) {
+            handleGameOver(delta);
+            return;
+        }
+
+        // ★ 타이머 카운트다운 (테스트 모드가 아닐 때만)
+        if (!localTestMode) {
+            gameTime -= delta;
+            
+            // 시간 종료 → Runner 승리
+            if (gameTime <= 0) {
+                gameTime = 0;
+                triggerGameOver(myPlayer.getRole() == PlayerRole.RUNNER);
+            }
+            
+            // 모든 Runner 빙결 체크 → Chaser 승리
+            if (myPlayer.getRole() == PlayerRole.CHASER) {
+                boolean allRunnersFrozen = true;
+                for (Player p : players.values()) {
+                    if (p.getRole() == PlayerRole.RUNNER && !p.isFrozen()) {
+                        allRunnersFrozen = false;
+                        break;
+                    }
+                }
+                if (allRunnersFrozen && players.size() > 1) {  // 혼자가 아닐 때
+                    triggerGameOver(true);  // Chaser 승리
+                }
+            }
+        }
+
         // 입력 처리
         handleInput(delta);
 
@@ -1002,6 +1108,54 @@ public class GameScreen implements Screen {
             fogEffect.render(app.batch,
                 stage.getViewport().getScreenWidth(),
                 stage.getViewport().getScreenHeight());
+        }
+    }
+    
+    // ★ 게임 종료 트리거
+    private void triggerGameOver(boolean won) {
+        if (gameOver) return;  // 이미 게임 종료됨
+        
+        gameOver = true;
+        isWinner = won;
+        gameOverTimer = 0f;
+        resultImageY = 1200f;  // 화면 위에서 시작
+        
+        Gdx.app.log("GAME", "게임 종료! 승리: " + won);
+    }
+    
+    // ★ 게임 종료 처리
+    private void handleGameOver(float delta) {
+        // 배경 그리기
+        stage.act(delta);
+        stage.draw();
+        
+        // 승패 이미지 애니메이션 (위에서 중앙으로)
+        if (resultImageY > 480f) {
+            resultImageY -= 1500f * delta;  // 빠르게 내려옴
+            if (resultImageY < 480f) resultImageY = 480f;
+        }
+        
+        // 승패 이미지 렌더링
+        app.batch.setProjectionMatrix(app.batch.getProjectionMatrix().idt());
+        app.batch.getProjectionMatrix().setToOrtho2D(0, 0,
+            stage.getViewport().getScreenWidth(),
+            stage.getViewport().getScreenHeight());
+        
+        app.batch.begin();
+        
+        Texture resultTex = isWinner ? texYouWin : texYouLose;
+        float imgW = 600f;
+        float imgH = imgW * (resultTex.getHeight() / (float)resultTex.getWidth());
+        float imgX = (stage.getViewport().getScreenWidth() - imgW) / 2f;
+        
+        app.batch.draw(resultTex, imgX, resultImageY - imgH/2f, imgW, imgH);
+        
+        app.batch.end();
+        
+        // 5초 후 FirstScreen으로
+        gameOverTimer += delta;
+        if (gameOverTimer >= GAME_OVER_DURATION) {
+            app.setScreen(new FirstScreen(app));
         }
     }
 
@@ -1121,6 +1275,10 @@ public class GameScreen implements Screen {
         // 게이지 dispose
         texGage1.dispose();
         texGage2.dispose();
+        
+        // ★ 승패 이미지 dispose
+        if (texYouWin != null) texYouWin.dispose();
+        if (texYouLose != null) texYouLose.dispose();
 
         if (skillUI != null) skillUI.dispose();
         if (sr != null) sr.dispose();

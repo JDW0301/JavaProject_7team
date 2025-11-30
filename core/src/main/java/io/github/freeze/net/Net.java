@@ -27,7 +27,7 @@ public final class Net {
         default void onPlayerMove(String playerId, float dx, float dy, float x, float y) {}
         default void onPlayerFreeze(String targetId, String attackerId) {}
         default void onPlayerUnfreeze(String targetId, String unfreezeId) {}
-        default void onSkillUsed(String playerId, String skillType) {}
+        default void onSkillUsed(String playerId, String skillType, String targetId) {}  // ★ targetId 추가
         default void onFogActivated(String playerId) {}
         default void onPlayerReady(String playerId, boolean isReady) {}
         default void onPlayerJoined(String playerId, float x, float y) {}  // ★ x, y 추가
@@ -213,8 +213,16 @@ public final class Net {
     
     // 스킬 사용
     public void sendSkillUse(String skillType) {
+        sendSkillUse(skillType, null);
+    }
+    
+    // 스킬 사용 (targetId 포함)
+    public void sendSkillUse(String skillType, String targetId) {
         Map<String,Object> payload = new HashMap<>();
         payload.put("skillType", skillType);
+        if (targetId != null) {
+            payload.put("targetId", targetId);
+        }
         
         Map<String,Object> msg = new HashMap<>();
         msg.put("type", "skillUse");
@@ -364,7 +372,9 @@ public final class Net {
                 case "skillUse": {
                     String playerId = jo.has("playerId") ? jo.get("playerId").getAsString() : "";
                     String skillType = jo.has("skillType") ? jo.get("skillType").getAsString() : "";
-                    if (listener != null) listener.onSkillUsed(playerId, skillType);
+                    String targetId = jo.has("targetId") && !jo.get("targetId").isJsonNull() 
+                        ? jo.get("targetId").getAsString() : null;  // ★ targetId 파싱
+                    if (listener != null) listener.onSkillUsed(playerId, skillType, targetId);
                     break;
                 }
                 
