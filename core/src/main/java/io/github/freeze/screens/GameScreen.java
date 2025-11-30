@@ -109,7 +109,7 @@ public class GameScreen implements Screen {
 
     // 입력
     private float moveSendTimer = 0f;
-    private static final float MOVE_SEND_INTERVAL = 0.05f; // 20fps로 위치 전송
+    private static final float MOVE_SEND_INTERVAL = 0.033f; // ★ 33ms = 30fps (50ms → 33ms)
     
     // ★ 이전 프레임 이동 상태 (정지 메시지 전송용)
     private boolean wasMovingLastFrame = false;
@@ -1119,6 +1119,23 @@ public class GameScreen implements Screen {
         isWinner = won;
         gameOverTimer = 0f;
         resultImageY = 1200f;  // 화면 위에서 시작
+        
+        // ★ 전적 업데이트 (테스트 모드가 아닐 때만)
+        if (!localTestMode) {
+            Preferences prefs = Gdx.app.getPreferences("freeze-game");
+            int wins = prefs.getInteger("wins", 0);
+            int losses = prefs.getInteger("losses", 0);
+            
+            if (won) {
+                prefs.putInteger("wins", wins + 1);
+                Gdx.app.log("GAME", "승리! 전적: " + (wins + 1) + "승 " + losses + "패");
+            } else {
+                prefs.putInteger("losses", losses + 1);
+                Gdx.app.log("GAME", "패배! 전적: " + wins + "승 " + (losses + 1) + "패");
+            }
+            
+            prefs.flush();  // 저장
+        }
         
         Gdx.app.log("GAME", "게임 종료! 승리: " + won);
     }

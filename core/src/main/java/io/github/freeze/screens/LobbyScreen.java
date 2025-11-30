@@ -36,6 +36,9 @@ import java.util.Map;
 public class LobbyScreen implements Screen {
     private static final int VW = Core.V_WIDTH;  // 1280
     private static final int VH = Core.V_HEIGHT; // 960
+    
+    // ★ 충돌 처리용 히트박스 패딩
+    private static final float HERO_PAD = 0.25f;  // 캐릭터 크기의 25% 여백
 
     private final Core app;
     private final Stage stage;
@@ -75,7 +78,7 @@ public class LobbyScreen implements Screen {
     
     // 이동 전송 타이머
     private float moveSendTimer = 0f;
-    private static final float MOVE_SEND_INTERVAL = 0.05f;  // 50ms마다 전송
+    private static final float MOVE_SEND_INTERVAL = 0.033f;  // ★ 33ms = 30fps (50ms → 33ms)
     
     // ★ 이전 프레임 이동 상태 (정지 메시지 전송용)
     private boolean wasMovingLastFrame = false;
@@ -442,27 +445,89 @@ public class LobbyScreen implements Screen {
     }
 
     private void movePlayer(Player player, float dx, float dy, float delta) {
-        Image img = player.getImage();
-        
-        float oldX = img.getX();
-        float oldY = img.getY();
-        
-        player.move(dx, dy, delta);
-        
-        float newX = img.getX();
-        float newY = img.getY();
-        
-        // 바닥 영역 체크
-        Rectangle playerBounds = new Rectangle(newX, newY, img.getWidth(), img.getHeight());
-        
-        // 바닥 영역 밖이면 원위치
-        if (!floorArea.contains(playerBounds.x, playerBounds.y) ||
-            !floorArea.contains(playerBounds.x + playerBounds.width, playerBounds.y) ||
-            !floorArea.contains(playerBounds.x, playerBounds.y + playerBounds.height) ||
-            !floorArea.contains(playerBounds.x + playerBounds.width, playerBounds.y + playerBounds.height)) {
-            
-            player.setPosition(oldX, oldY);
+        // 정규화
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len > 0f) {
+            dx /= len;
+            dy /= len;
         }
+
+        float speed = player.getSpeed();
+        float vx = dx * speed * delta;
+        float vy = dy * speed * delta;
+
+        Image img = player.getImage();
+        float w = img.getWidth(), h = img.getHeight();
+        float px = w * HERO_PAD, py = h * HERO_PAD;
+        float hbW = w - 2f * px, hbH = h - 2f * py;
+        
+        float origX = img.getX();
+        float origY = img.getY();
+
+        // ★ X축 이동 시도
+        float nx = origX + vx;
+        Rectangle hb = new Rectangle(nx + px, origY + py, hbW, hbH);
+        
+        // X축 충돌 체크 (바닥 영역 + 다른 플레이어)
+        if (!isInFloorArea(hb) || collideWithPlayer(player, hb) != null) {
+            nx = origX;  // 충돌 시 X 이동 취소
+        }
+
+        // ★ Y축 이동 시도
+        float ny = origY + vy;
+        hb = new Rectangle(nx + px, ny + py, hbW, hbH);
+        
+        // Y축 충돌 체크 (바닥 영역 + 다른 플레이어)
+        if (!isInFloorArea(hb) || collideWithPlayer(player, hb) != null) {
+            ny = origY;  // 충돌 시 Y 이동 취소
+        }
+        
+        // 위치 적용
+        img.setX(nx);
+        img.setY(ny);
+        player.setPosition(nx, ny);
+        
+        // 방향 설정
+        if (nx != origX || ny != origY) {
+            player.updateDirection(dx, dy);
+        } else {
+            player.stopMoving();
+        }
+    }
+    
+    // ★ 바닥 영역 체크 (히트박스 기준)
+    private boolean isInFloorArea(Rectangle hb) {
+        // 히트박스의 4개 모서리가 모두 바닥 영역 안에 있는지 확인
+        return floorArea.contains(hb.x, hb.y) &&
+               floorArea.contains(hb.x + hb.width, hb.y) &&
+               floorArea.contains(hb.x, hb.y + hb.height) &&
+               floorArea.contains(hb.x + hb.width, hb.y + hb.height);
+    }
+    
+    // ★ 다른 플레이어와 충돌 체크
+    private Rectangle collideWithPlayer(Player me, Rectangle hb) {
+        for (Player p : players.values()) {
+            if (p == me) continue;  // 자기 자신 제외
+            
+            Image otherImg = p.getImage();
+            if (otherImg == null) continue;
+            
+            // 다른 플레이어의 히트박스 계산
+            float ow = otherImg.getWidth(), oh = otherImg.getHeight();
+            float opx = ow * HERO_PAD, opy = oh * HERO_PAD;
+            Rectangle otherHb = new Rectangle(
+                otherImg.getX() + opx,
+                otherImg.getY() + opy,
+                ow - 2f * opx,
+                oh - 2f * opy
+            );
+            
+            // 충돌 검사
+            if (hb.overlaps(otherHb)) {
+                return otherHb;
+            }
+        }
+        return null;
     }
 
     // ========== 버튼 액션 ==========

@@ -32,6 +32,9 @@ public class SettingScreen implements Screen {
     private Table inputNick;          // roomade_W.png 프레임 배경
     private TextField tfNick;
     private ImageButton btnCheck, btnCancel;
+    
+    // ★ 전적 표시 Label
+    private Label lblRecord;
 
     // 폰트
     private BitmapFont fontKR;
@@ -100,6 +103,15 @@ public class SettingScreen implements Screen {
                 // app.setScreen(new FirstScreen(app)); // 필요 시 복귀
             }
         });
+        
+        // ★ 전적 표시 Label 생성
+        Label.LabelStyle labelStyle = new Label.LabelStyle();
+        labelStyle.font = fontKR;
+        labelStyle.fontColor = Color.WHITE;
+        
+        lblRecord = new Label("", labelStyle);
+        lblRecord.setAlignment(Align.center);
+        stage.addActor(lblRecord);
 
         layout();
     }
@@ -135,10 +147,22 @@ public class SettingScreen implements Screen {
         float btnW = bw * 0.15f;
         placeBtn(btnCheck,  btnW, board.getX() + bw * 0.42f, board.getY() + bh * 0.23f); // 확인(왼쪽)
         placeBtn(btnCancel, btnW, board.getX() + bw * 0.58f, board.getY() + bh * 0.23f); // 취소(오른쪽)
+        
+        // ★ 전적 표시 (닉네임 입력칸 바로 아래)
+        Preferences prefs = Gdx.app.getPreferences("freeze-game");
+        int wins = prefs.getInteger("wins", 0);
+        int losses = prefs.getInteger("losses", 0);
+        lblRecord.setText("전적: " + wins + "승 " + losses + "패");
+        lblRecord.setPosition(
+            board.getX() + bw * 0.40f,  // 닉네임 입력칸과 동일한 X (40%)
+            board.getY() + bh * 0.38f,  // 닉네임 입력칸(48%) 아래 (38%)
+            Align.center
+        );
 
         // 가림 방지
         inputNick.toFront();
         btnCheck.toFront(); btnCancel.toFront();
+        lblRecord.toFront();  // ★ Label을 최상위로
     }
 
     // ===== 헬퍼 =====
