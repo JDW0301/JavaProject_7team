@@ -344,11 +344,53 @@ public class LobbyScreen implements Screen {
         float charScale = charH / texIdle.getHeight();
         playerImage.setSize(texIdle.getWidth() * charScale, texIdle.getHeight() * charScale);
 
-        // ★ 위치 설정 (x < 0 이면 랜덤)
+        // ★ 위치 설정
         float posX, posY;
         if (x < 0 || y < 0) {
-            posX = floorArea.x + (float)(Math.random() * (floorArea.width - playerImage.getWidth()));
-            posY = floorArea.y + (float)(Math.random() * (floorArea.height - playerImage.getHeight()));
+            // ★ 플레이어 수에 따라 위치 분산
+            int playerCount = players.size();
+            
+            float baseX = floorArea.x + floorArea.width / 2f;   // 바닥 중앙
+            float baseY = floorArea.y + floorArea.height / 2f;  // 바닥 중앙
+            float spacingX = floorArea.width * 0.15f;  // 15% 간격
+            float spacingY = floorArea.height * 0.15f; // 15% 간격
+            
+            switch (playerCount) {
+                case 0:  // 첫 번째: 중앙
+                    posX = baseX - playerImage.getWidth() / 2f;
+                    posY = baseY - playerImage.getHeight() / 2f;
+                    break;
+                case 1:  // 두 번째: 왼쪽
+                    posX = baseX - spacingX - playerImage.getWidth() / 2f;
+                    posY = baseY - playerImage.getHeight() / 2f;
+                    break;
+                case 2:  // 세 번째: 오른쪽
+                    posX = baseX + spacingX - playerImage.getWidth() / 2f;
+                    posY = baseY - playerImage.getHeight() / 2f;
+                    break;
+                case 3:  // 네 번째: 중앙 위
+                    posX = baseX - playerImage.getWidth() / 2f;
+                    posY = baseY + spacingY - playerImage.getHeight() / 2f;
+                    break;
+                case 4:  // 다섯 번째: 중앙 아래
+                    posX = baseX - playerImage.getWidth() / 2f;
+                    posY = baseY - spacingY - playerImage.getHeight() / 2f;
+                    break;
+                default:  // 6명 이상: 원형 배치
+                    float angle = (float)(playerCount * Math.PI * 2.0 / 8.0);  // 8명 기준
+                    float radius = Math.min(spacingX, spacingY);
+                    posX = baseX + (float)Math.cos(angle) * radius - playerImage.getWidth() / 2f;
+                    posY = baseY + (float)Math.sin(angle) * radius - playerImage.getHeight() / 2f;
+                    break;
+            }
+            
+            // 바닥 영역 밖이면 중앙으로
+            if (posX < floorArea.x || posX + playerImage.getWidth() > floorArea.x + floorArea.width) {
+                posX = baseX - playerImage.getWidth() / 2f;
+            }
+            if (posY < floorArea.y || posY + playerImage.getHeight() > floorArea.y + floorArea.height) {
+                posY = baseY - playerImage.getHeight() / 2f;
+            }
         } else {
             posX = x;
             posY = y;
