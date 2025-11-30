@@ -573,18 +573,48 @@ public class GameScreen implements Screen {
     private Player createPlayerWithRole(String playerId, PlayerRole role) {
         float heroH = worldH * 0.15f;
         
-        // ★ 고정 시작 위치 (골대 피하기)
-        // 중앙 영역 (30% ~ 70% X축, 30% ~ 70% Y축)
+        // ★ 스폰 위치 (골대 피하기 + Runner 분산)
         float startX, startY;
         
         if (role == PlayerRole.CHASER) {
-            // Chaser: 중앙 상단
-            startX = worldW * 0.50f;  // 중앙
-            startY = worldH * 0.60f;  // 상단
+            // Chaser: 중앙 상단 (고정)
+            startX = worldW * 0.50f;
+            startY = worldH * 0.60f;
         } else {
-            // Runner: 중앙 하단
-            startX = worldW * 0.50f;  // 중앙
-            startY = worldH * 0.40f;  // 하단
+            // Runner: 중앙 하단을 기준으로 좌우 분산
+            // Runner 수 카운트
+            int runnerCount = 0;
+            for (Player p : players.values()) {
+                if (p.getRole() == PlayerRole.RUNNER) {
+                    runnerCount++;
+                }
+            }
+            
+            // 좌우로 분산 (3명까지 최적화)
+            float baseX = worldW * 0.50f;  // 중앙
+            float baseY = worldH * 0.40f;  // 하단
+            float spacing = worldW * 0.10f;  // 10% 간격
+            
+            switch (runnerCount) {
+                case 0:  // 첫 번째 Runner: 중앙
+                    startX = baseX;
+                    startY = baseY;
+                    break;
+                case 1:  // 두 번째 Runner: 왼쪽
+                    startX = baseX - spacing;
+                    startY = baseY;
+                    break;
+                case 2:  // 세 번째 Runner: 오른쪽
+                    startX = baseX + spacing;
+                    startY = baseY;
+                    break;
+                default:  // 4명 이상: 원형 배치
+                    float angle = (float)(runnerCount * Math.PI * 2.0 / 5.0);  // 5명 기준 원형
+                    float radius = spacing;
+                    startX = baseX + (float)Math.cos(angle) * radius;
+                    startY = baseY + (float)Math.sin(angle) * radius * 0.5f;  // Y축은 절반만
+                    break;
+            }
         }
 
         if (role == PlayerRole.CHASER) {
@@ -1004,6 +1034,26 @@ public class GameScreen implements Screen {
         }
         return null;
     }
+    
+    // ★ Z-ordering: Y좌표 기준으로 플레이어 깊이 정렬
+    private void sortPlayersByDepth() {
+        // 모든 플레이어를 Y좌표 기준으로 정렬 (높은 순 → 낮은 순)
+        java.util.List<Player> sortedPlayers = new java.util.ArrayList<>(players.values());
+        sortedPlayers.sort((p1, p2) -> {
+            float y1 = p1.getPosition().y;
+            float y2 = p2.getPosition().y;
+            return Float.compare(y2, y1);  // 내림차순 (Y 높은 것부터)
+        });
+        
+        // 정렬된 순서대로 toFront() 호출
+        // Y 높은 플레이어(위쪽) → 먼저 toFront() → 뒤에 렌더링
+        // Y 낮은 플레이어(아래쪽) → 나중에 toFront() → 앞에 렌더링
+        for (Player p : sortedPlayers) {
+            if (p.getImage() != null) {
+                p.getImage().toFront();
+            }
+        }
+    }
 
     // ========== 카메라 ==========
     private void centerCameraOnPlayer(Player player) {
@@ -1117,6 +1167,9 @@ public class GameScreen implements Screen {
         for (Player p : players.values()) {
             p.update(delta);
         }
+        
+        // ★ Z-ordering: Y좌표 기준 깊이 정렬
+        sortPlayersByDepth();
         
         // ★★★ 추가: 해빙 완료 체크 및 서버 전송 ★★★
         if (myPlayer != null && myPlayer.isUnfreezeCompleted()) {

@@ -537,6 +537,26 @@ public class LobbyScreen implements Screen {
         }
         return null;
     }
+    
+    // ★ Z-ordering: Y좌표 기준으로 플레이어 깊이 정렬
+    private void sortPlayersByDepth() {
+        // 모든 플레이어를 Y좌표 기준으로 정렬 (높은 순 → 낮은 순)
+        java.util.List<Player> sortedPlayers = new java.util.ArrayList<>(players.values());
+        sortedPlayers.sort((p1, p2) -> {
+            float y1 = p1.getPosition().y;
+            float y2 = p2.getPosition().y;
+            return Float.compare(y2, y1);  // 내림차순 (Y 높은 것부터)
+        });
+        
+        // 정렬된 순서대로 toFront() 호출
+        // Y 높은 플레이어(위쪽) → 먼저 toFront() → 뒤에 렌더링
+        // Y 낮은 플레이어(아래쪽) → 나중에 toFront() → 앞에 렌더링
+        for (Player p : sortedPlayers) {
+            if (p.getImage() != null) {
+                p.getImage().toFront();
+            }
+        }
+    }
 
     // ========== 버튼 액션 ==========
     private void toggleReady() {
@@ -665,6 +685,9 @@ public class LobbyScreen implements Screen {
         for (Player p : players.values()) {
             p.update(delta);
         }
+        
+        // ★ Z-ordering: Y좌표 기준 깊이 정렬
+        sortPlayersByDepth();
 
         stage.act(delta);
         stage.draw();
