@@ -78,7 +78,7 @@ public class LobbyScreen implements Screen {
     
     // 이동 전송 타이머
     private float moveSendTimer = 0f;
-    private static final float MOVE_SEND_INTERVAL = 0.033f;  // ★ 33ms = 30fps (50ms → 33ms)
+    private static final float MOVE_SEND_INTERVAL = 0.02f;  // ★ 20ms = 50fps (33ms → 20ms)
     
     // ★ 이전 프레임 이동 상태 (정지 메시지 전송용)
     private boolean wasMovingLastFrame = false;
@@ -312,6 +312,14 @@ public class LobbyScreen implements Screen {
         isHost = true;  // 테스트용으로 방장
 
         addPlayer(myPlayerId);
+        
+        // ★ 초기 위치를 서버에 전송
+        Player me = players.get(myPlayerId);
+        if (me != null) {
+            Vector2 pos = me.getPosition();
+            Net.get().sendPlayerMove(myPlayerId, 0, 0, pos.x, pos.y);
+            Gdx.app.log("LOBBY", "초기 위치 전송: " + pos.x + ", " + pos.y);
+        }
 
         // UI 업데이트
         btnStart.setVisible(isHost);

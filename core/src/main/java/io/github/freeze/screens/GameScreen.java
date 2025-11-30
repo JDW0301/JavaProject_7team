@@ -109,7 +109,7 @@ public class GameScreen implements Screen {
 
     // 입력
     private float moveSendTimer = 0f;
-    private static final float MOVE_SEND_INTERVAL = 0.033f; // ★ 33ms = 30fps (50ms → 33ms)
+    private static final float MOVE_SEND_INTERVAL = 0.02f; // ★ 20ms = 50fps (33ms → 20ms)
     
     // ★ 이전 프레임 이동 상태 (정지 메시지 전송용)
     private boolean wasMovingLastFrame = false;
@@ -122,6 +122,11 @@ public class GameScreen implements Screen {
     private static final float GAME_OVER_DURATION = 5f;  // 5초 후 메인으로
     private float resultImageY = 1200f;  // 승패 이미지 Y 위치 (애니메이션용)
     private Texture texYouWin, texYouLose;  // 승패 이미지
+    
+    // ★ 전멸 판정 대기
+    private boolean allRunnersFrozenDetected = false;  // 전멸 감지 플래그
+    private float freezeWaitTimer = 0f;  // 전멸 후 대기 시간
+    private static final float FREEZE_WAIT_DURATION = 2f;  // 2초 대기
 
     // ★ 서버에서 받은 역할 정보
     private Map<String, PlayerRole> serverRoles = new HashMap<>();
@@ -554,6 +559,13 @@ public class GameScreen implements Screen {
         if (myPlayer != null) {
             myPlayer.getImage().toFront();
             centerCameraOnPlayer(myPlayer);
+            
+            // ★ 초기 위치를 서버에 전송 (다른 클라이언트와 동기화)
+            if (!localTestMode) {
+                Vector2 pos = myPlayer.getPosition();
+                Net.get().sendPlayerMove(myPlayerId, 0, 0, pos.x, pos.y);
+                Gdx.app.log("GAME", "초기 위치 전송: " + pos.x + ", " + pos.y);
+            }
         }
     }
 
@@ -561,9 +573,19 @@ public class GameScreen implements Screen {
     private Player createPlayerWithRole(String playerId, PlayerRole role) {
         float heroH = worldH * 0.15f;
         
-        // 랜덤 시작 위치
-        float startX = worldW * (0.2f + (float)Math.random() * 0.6f);
-        float startY = worldH * (0.3f + (float)Math.random() * 0.4f);
+        // ★ 고정 시작 위치 (골대 피하기)
+        // 중앙 영역 (30% ~ 70% X축, 30% ~ 70% Y축)
+        float startX, startY;
+        
+        if (role == PlayerRole.CHASER) {
+            // Chaser: 중앙 상단
+            startX = worldW * 0.50f;  // 중앙
+            startY = worldH * 0.60f;  // 상단
+        } else {
+            // Runner: 중앙 하단
+            startX = worldW * 0.50f;  // 중앙
+            startY = worldH * 0.40f;  // 하단
+        }
 
         if (role == PlayerRole.CHASER) {
             // ★ Chaser 생성
@@ -1025,6 +1047,34 @@ public class GameScreen implements Screen {
             handleGameOver(delta);
             return;
         }
+        
+        // ★ 전멸 판정 대기 중
+        if (allRunnersFrozenDetected) {
+            // ★ 해빙되면 전멸 상태 취소
+            boolean stillAllFrozen = true;
+            for (Player p : players.values()) {
+                if (p.getRole() == PlayerRole.RUNNER && !p.isFrozen()) {
+                    stillAllFrozen = false;
+                    break;
+                }
+            }
+            
+            if (!stillAllFrozen) {
+                // 누군가 해빙됨 → 전멸 취소
+                allRunnersFrozenDetected = false;
+                freezeWaitTimer = 0f;
+                Gdx.app.log("GAME", "★ 전멸 취소! (해빙됨)");
+            } else {
+                // 여전히 전멸 상태 → 타이머 증가
+                freezeWaitTimer += delta;
+                if (freezeWaitTimer >= FREEZE_WAIT_DURATION) {
+                    // 2초 경과 → 승패 확정
+                    boolean iWin = (myPlayer.getRole() == PlayerRole.CHASER);
+                    triggerGameOver(iWin);
+                    allRunnersFrozenDetected = false;
+                }
+            }
+        }
 
         // ★ 타이머 카운트다운 (테스트 모드가 아닐 때만)
         if (!localTestMode) {
@@ -1035,19 +1085,28 @@ public class GameScreen implements Screen {
                 gameTime = 0;
                 triggerGameOver(myPlayer.getRole() == PlayerRole.RUNNER);
             }
+        }
+        
+        // ★ 모든 Runner 빙결 체크 (모든 플레이어가 체크)
+        if (!gameOver && !allRunnersFrozenDetected) {
+            boolean allRunnersFrozen = true;
+            int runnerCount = 0;
             
-            // 모든 Runner 빙결 체크 → Chaser 승리
-            if (myPlayer.getRole() == PlayerRole.CHASER) {
-                boolean allRunnersFrozen = true;
-                for (Player p : players.values()) {
-                    if (p.getRole() == PlayerRole.RUNNER && !p.isFrozen()) {
+            for (Player p : players.values()) {
+                if (p.getRole() == PlayerRole.RUNNER) {
+                    runnerCount++;
+                    if (!p.isFrozen()) {
                         allRunnersFrozen = false;
                         break;
                     }
                 }
-                if (allRunnersFrozen && players.size() > 1) {  // 혼자가 아닐 때
-                    triggerGameOver(true);  // Chaser 승리
-                }
+            }
+            
+            // Runner가 1명 이상 있고 모두 얼었으면 → 전멸 판정 시작
+            if (runnerCount > 0 && allRunnersFrozen) {
+                allRunnersFrozenDetected = true;
+                freezeWaitTimer = 0f;
+                Gdx.app.log("GAME", "★ 전멸 감지! 2초 후 게임 종료...");
             }
         }
 
